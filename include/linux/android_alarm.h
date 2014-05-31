@@ -101,6 +101,7 @@ enum android_alarm_return_flags {
 
 #define ALARM_IOW(c, type, size)            _IOW('a', (c) | ((type) << 4), size)
 /* Set alarm */
+#define ANDROID_ALARM_SET_DELAY(type)       ALARM_IOW(10, type, uint64_t)
 #define ANDROID_ALARM_SET(type)             ALARM_IOW(2, type, struct timespec)
 #define ANDROID_ALARM_SET_AND_WAIT(type)    ALARM_IOW(3, type, struct timespec)
 #define ANDROID_ALARM_GET_TIME(type)        ALARM_IOW(4, type, struct timespec)

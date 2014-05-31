@@ -1,0 +1,1 @@
+cmd_drivers/media/video/samsung/mali/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/media/video/samsung/mali/built-in.o drivers/media/video/samsung/mali/mali.o 

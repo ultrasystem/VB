@@ -305,7 +305,7 @@ static int lsm330dlc_accel_enable(struct lsm330dlc_accel_data *data)
 			pr_err("%s: i2c write ctrl_reg1 failed\n", __func__);
 
 		err = i2c_smbus_write_byte_data(data->client, CTRL_REG4,
-						CTRL_REG4_HR|CTRL_REG4_FS1|CTRL_REG4_FS0);
+						CTRL_REG4_HR|CTRL_REG4_FS1);
 		if (err)
 			pr_err("%s: i2c write ctrl_reg4 failed\n", __func__);
 #ifdef USES_INPUT_DEV
@@ -421,9 +421,40 @@ static long lsm330dlc_accel_ioctl(struct file *file,
 	int enable = 0, j;
 	s16 raw[3] = {0,};
 	struct lsm330dlc_acc xyz_adjusted = {0,};
+	int i = 0;
+	struct lsm330dlc_register regs;
+	int8_t range_val = 0;
 
 	/* cmd mapping */
 	switch (cmd) {
+	case LSM330DLC_ACCEL_IOCTL_SET_RANGE:
+                if (copy_from_user(&range_val, (void __user *)arg,
+                                        sizeof(range_val)))
+                        return -EFAULT;
+
+		mutex_lock(&data->write_lock);
+		err = i2c_smbus_write_byte_data(data->client, CTRL_REG4,
+			range_val);
+		mutex_unlock(&data->write_lock);
+                if (err) {
+                        pr_err("%s: i2c write ctrl_reg4 failed\n", __func__);
+			return -EFAULT;
+		}
+		return 0;
+	case LSM330DLC_ACCEL_IOCTL_GET_REGISTER:
+		if (copy_from_user(&regs, (void __user *)arg,
+                                        sizeof(regs)))
+                        return -EFAULT;
+
+		for(i=0;i<LSM330DLC_ACCEL_MAX_REGISTER;i++) {
+			regs.reg[i] = (u8)i2c_smbus_read_byte_data(data->client, regs.reg[i]);
+		}
+
+		if (copy_to_user((void __user *)arg,
+                        &regs, sizeof(regs)))
+                        return -EFAULT;
+
+		return 0;
 	case LSM330DLC_ACCEL_IOCTL_SET_ENABLE:
 		if (copy_from_user(&enable, (void __user *)arg,
 					sizeof(enable)))

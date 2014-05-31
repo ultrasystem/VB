@@ -1,0 +1,1 @@
+cmd_drivers/power/power_supply.o := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/power/power_supply.o drivers/power/power_supply_core.o drivers/power/power_supply_sysfs.o 

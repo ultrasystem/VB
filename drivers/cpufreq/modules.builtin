@@ -1,0 +1,6 @@
+kernel/drivers/cpufreq/cpufreq_stats.ko
+kernel/drivers/cpufreq/cpufreq_zzmoove.ko
+kernel/drivers/cpufreq/cpufreq_pegasusq.ko
+kernel/drivers/cpufreq/cpufreq_pegasusqplus.ko
+kernel/drivers/cpufreq/cpufreq_lulzactiveq.ko
+kernel/drivers/cpufreq/freq_table.ko

@@ -348,12 +348,17 @@ static ssize_t objmem_read(struct file *file, char __user *buf,
 
     spin_lock_irqsave(&context->lock, flags);
     ret = copy_to_user(buf, context->buffer, len);
-    omdata->read_count = context->update_count;
     omdata->updated = 0;
     spin_unlock_irqrestore(&context->lock, flags);
 
     if(ret == 0) {
 
+        if( atomic64_read(&omdata->read_count) == atomic64_read(&context->update_count) ) {
+
+            return -EAGAIN;
+        }
+
+        omdata->read_count = context->update_count;
         return len;
     }
 
@@ -410,11 +415,7 @@ static ssize_t objmem_write(struct file *file, const char __user *buf,
     spin_unlock_irqrestore(&context->lock, flags);
 
     if(ret == 0) {
-
-        //spin_lock_irqsave(&context->inq.lock, flags);
-        wake_up(&context->inq);
-        //spin_unlock_irqrestore(&context->inq.lock, flags);
-
+        wake_up_all(&context->inq);
         atomic64_inc(&context->update_count);
         return len;
     }
@@ -425,8 +426,6 @@ static ssize_t objmem_write(struct file *file, const char __user *buf,
 static unsigned objmem_poll(struct file *file, struct poll_table_struct *wait)
 {
     unsigned int mask = 0;
-    unsigned long flags = 0;
-
     struct objmem_data *omdata = file->private_data;
     struct objmem_context *context = omdata->context;
 
@@ -435,8 +434,6 @@ static unsigned objmem_poll(struct file *file, struct poll_table_struct *wait)
     }
 
     poll_wait(file, &context->inq, wait);
-
-    spin_lock_irqsave(&context->inq.lock, flags);
 
     while( atomic64_read(&context->update_count) != atomic64_read(&omdata->read_count) )
     {
@@ -460,8 +457,6 @@ static unsigned objmem_poll(struct file *file, struct poll_table_struct *wait)
         mask = POLLIN;
         break;
     }
-
-    spin_unlock_irqrestore(&context->inq.lock, flags);
 
     return mask;
 }

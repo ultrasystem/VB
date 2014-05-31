@@ -1,0 +1,1 @@
+cmd_drivers/media/video/exynos/fimc-lite/fimc-lite.o := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/media/video/exynos/fimc-lite/fimc-lite.o drivers/media/video/exynos/fimc-lite/fimc-lite-core.o drivers/media/video/exynos/fimc-lite/fimc-lite-reg.o 

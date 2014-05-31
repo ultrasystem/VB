@@ -1,0 +1,1 @@
+cmd_drivers/net/wireless/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/net/wireless/built-in.o drivers/net/wireless/bcmdhd/built-in.o drivers/net/wireless/btlock/built-in.o 
