@@ -1,1 +1,0 @@
-cmd_drivers/scsi/scsi_wait_scan.ko := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL -r  -T /arm/android/SG3X/kernel/scripts/module-common.lds --build-id  -o drivers/scsi/scsi_wait_scan.ko drivers/scsi/scsi_wait_scan.o drivers/scsi/scsi_wait_scan.mod.o

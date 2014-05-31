@@ -1,1 +1,0 @@
-cmd_drivers/usb/notify/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/usb/notify/built-in.o drivers/usb/notify/host_notify_class.o drivers/usb/notify/host_notifier.o 

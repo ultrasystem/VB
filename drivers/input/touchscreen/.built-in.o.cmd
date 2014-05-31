@@ -1,1 +1,0 @@
-cmd_drivers/input/touchscreen/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/input/touchscreen/built-in.o drivers/input/touchscreen/mms_ts.o drivers/input/touchscreen/touchboost_switch.o 

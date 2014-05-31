@@ -1,1 +1,0 @@
-cmd_net/sunrpc/sunrpc.ko := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL -r  -T /arm/android/SG3X/kernel/scripts/module-common.lds --build-id  -o net/sunrpc/sunrpc.ko net/sunrpc/sunrpc.o net/sunrpc/sunrpc.mod.o

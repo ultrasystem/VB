@@ -1,1 +1,0 @@
-cmd_fs/lockd/lockd.ko := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL -r  -T /arm/android/SG3X/kernel/scripts/module-common.lds --build-id  -o fs/lockd/lockd.ko fs/lockd/lockd.o fs/lockd/lockd.mod.o

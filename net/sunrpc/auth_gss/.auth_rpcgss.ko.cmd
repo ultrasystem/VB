@@ -1,1 +1,0 @@
-cmd_net/sunrpc/auth_gss/auth_rpcgss.ko := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL -r  -T /arm/android/SG3X/kernel/scripts/module-common.lds --build-id  -o net/sunrpc/auth_gss/auth_rpcgss.ko net/sunrpc/auth_gss/auth_rpcgss.o net/sunrpc/auth_gss/auth_rpcgss.mod.o

@@ -1,8 +1,0 @@
-kernel/drivers/char/frandom.ko
-kernel/drivers/misc/objmem.ko
-kernel/drivers/scsi/scsi_wait_scan.ko
-kernel/drivers/net/wireless/bcmdhd/dhd.ko
-kernel/drivers/net/wireless/btlock/btlock.ko
-kernel/drivers/usb/class/cdc-acm.ko
-kernel/drivers/usb/class/cdc-acm.ko
-kernel/drivers/input/joystick/xpad.ko

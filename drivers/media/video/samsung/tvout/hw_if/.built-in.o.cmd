@@ -1,1 +1,0 @@
-cmd_drivers/media/video/samsung/tvout/hw_if/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/media/video/samsung/tvout/hw_if/built-in.o drivers/media/video/samsung/tvout/hw_if/mixer.o drivers/media/video/samsung/tvout/hw_if/vp.o drivers/media/video/samsung/tvout/hw_if/hdmi.o drivers/media/video/samsung/tvout/hw_if/hdcp.o 

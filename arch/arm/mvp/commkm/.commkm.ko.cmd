@@ -1,1 +1,0 @@
-cmd_arch/arm/mvp/commkm/commkm.ko := /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL -r  -T /arm/android/SG3X/kernel/scripts/module-common.lds --build-id  -o arch/arm/mvp/commkm/commkm.ko arch/arm/mvp/commkm/commkm.o arch/arm/mvp/commkm/commkm.mod.o

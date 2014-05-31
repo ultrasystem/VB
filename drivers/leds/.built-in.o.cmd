@@ -1,1 +1,0 @@
-cmd_drivers/leds/built-in.o :=  /arm/android/tools/linaro-4.7/bin/arm-linux-androideabi-ld -EL    -r -o drivers/leds/built-in.o drivers/leds/led-core.o drivers/leds/led-class.o drivers/leds/leds-aat1290a.o drivers/leds/leds-an30259a.o 
