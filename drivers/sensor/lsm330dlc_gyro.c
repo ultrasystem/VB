@@ -1476,20 +1476,20 @@ static long lsm330dlc_gyro_ioctl(struct file *file,
     bool enable = false;
 	u64 delay_ns;
     int new_dps;
-    int res, i, j;
+    int i, j;
     s16 raw[3] = {0,}, gyro_adjusted[3] = {0,};
     char temp;
     struct lsm330dlc_gyro gyro_xyz = {0,};
 
 	/* cmd mapping */
 	switch (cmd) {
-    case LSM330DLC_GYRO_SET_RANGE:
+    case LSM330DLC_GYRO_IOCTL_SET_RANGE:
         if(copy_from_user(&new_dps, (void __user *)arg, sizeof(new_dps)))
             return -EFAULT;
 
         err = lsm330dlc_gyro_set_dps(data, new_dps);
         break;
-    case LSM330DLC_GYRO_SET_ENABLE:
+    case LSM330DLC_GYRO_IOCTL_SET_ENABLE:
         if(copy_from_user(&enable, (void __user *)arg, sizeof(enable)))
             return -EFAULT;
 
@@ -1505,7 +1505,7 @@ static long lsm330dlc_gyro_ioctl(struct file *file,
 		if(put_user(lsm330dlc_gyro_get_delay_ns(data), (u64 __user *)arg))
 			return -EFAULT;
 		break;
-	case LSM330DLC_GYRO_IOCTL_READ_XYZ:
+    case LSM330DLC_GYRO_IOCTL_READ_DATA_XYZ:
 
         temp = i2c_smbus_read_byte_data(data->client, OUT_TEMP);
         if (temp < 0) {
@@ -1671,11 +1671,11 @@ static int lsm330dlc_gyro_probe(struct i2c_client *client,
 	}
 	
 	/* sensor HAL expects to find /dev/gyro */
-	data->lsm330dlc_accel_device.minor = MISC_DYNAMIC_MINOR;
-	data->lsm330dlc_accel_device.name = GYR_DEV_FILE_NAME;
-	data->lsm330dlc_accel_device.fops = &lsm330dlc_gyro_fops;
+    data->lsm330dlc_gyro_device.minor = MISC_DYNAMIC_MINOR;
+    data->lsm330dlc_gyro_device.name = GYR_DEV_FILE_NAME;
+    data->lsm330dlc_gyro_device.fops = &lsm330dlc_gyro_fops;
 
-	err = misc_register(&data->lsm330dlc_accel_device);
+    err = misc_register(&data->lsm330dlc_gyro_device);
 	if (err) {
 		pr_err("%s: misc_register failed\n", __FILE__);
 		goto err_misc_register;
