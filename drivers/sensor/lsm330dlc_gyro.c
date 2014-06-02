@@ -41,8 +41,6 @@
 #define CALIBRATION_FILE_PATH	"/efs/gyro_cal_data"
 #endif
 
-#define GYRO_DEV_NAME 	"gyro"
-
 /* lsm330dlc_gyro chip id */
 #define DEVICE_ID	0xD4
 /* lsm330dlc_gyro gyroscope registers */
@@ -85,9 +83,6 @@
 #define ODR760_BW100	0xF0  /* ODR = 760Hz; BW = 100Hz  */
 
 /* full scale selection */
-#define DPS250		250
-#define DPS500		500
-#define DPS2000		2000
 #define FS_MASK		0x30
 #define FS_250DPS	0x00
 #define FS_500DPS	0x10
@@ -512,54 +507,64 @@ static ssize_t register_data_show(struct device *dev,
 }
 #endif
 
+static int lsm330dlc_gyro_set_dps(struct lsm330dlc_gyro_data *data, int new_dps)
+{
+    int err;
+    u8 ctrl;
+
+    /* check out dps validity */
+    if (new_dps != DPS250 && new_dps != DPS500 && new_dps != DPS2000) {
+        pr_err("%s: wrong dps(%d)\n", __func__, new_dps);
+        return -1;
+    }
+
+    ctrl = (data->ctrl_regs[3] & ~FS_MASK);
+
+    if (new_dps == DPS250) {
+        ctrl |= FS_250DPS;
+        data->sensitivity_value = 1;
+    } else if (new_dps == DPS500) {
+        ctrl |= FS_500DPS;
+        data->sensitivity_value = 2;
+    } else if (new_dps == DPS2000) {
+        ctrl |= FS_2000DPS;
+        data->sensitivity_value = 8;
+    } else {
+        ctrl |= FS_DEFULAT_DPS;
+        data->sensitivity_value = 2;
+    }
+
+    /* apply new dps */
+    mutex_lock(&data->lock);
+    data->ctrl_regs[3] = ctrl;
+
+    err = i2c_smbus_write_byte_data(data->client, CTRL_REG4, ctrl);
+    if (err < 0) {
+        pr_err("%s: updating dps failed\n", __func__);
+        mutex_unlock(&data->lock);
+        return err;
+    }
+    mutex_unlock(&data->lock);
+
+    data->dps = new_dps;
+    pr_info("%s: %d dps stored, sensitivity = %d\n",
+        __func__, data->dps, data->sensitivity_value);
+
+    return 0;
+}
+
 static ssize_t lsm330dlc_gyro_selftest_dps_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
 {
 	struct lsm330dlc_gyro_data *data = dev_get_drvdata(dev);
 	int new_dps = 0;
-	int err;
-	u8 ctrl;
 
 	sscanf(buf, "%d", &new_dps);
 
-	/* check out dps validity */
-	if (new_dps != DPS250 && new_dps != DPS500 && new_dps != DPS2000) {
-		pr_err("%s: wrong dps(%d)\n", __func__, new_dps);
-		return -1;
-	}
-
-	ctrl = (data->ctrl_regs[3] & ~FS_MASK);
-
-	if (new_dps == DPS250) {
-		ctrl |= FS_250DPS;
-		data->sensitivity_value = 1;
-	} else if (new_dps == DPS500) {
-		ctrl |= FS_500DPS;
-		data->sensitivity_value = 2;
-	} else if (new_dps == DPS2000) {
-		ctrl |= FS_2000DPS;
-		data->sensitivity_value = 8;
-	} else {
-		ctrl |= FS_DEFULAT_DPS;
-		data->sensitivity_value = 2;
-	}
-
-	/* apply new dps */
-	mutex_lock(&data->lock);
-	data->ctrl_regs[3] = ctrl;
-
-	err = i2c_smbus_write_byte_data(data->client, CTRL_REG4, ctrl);
-	if (err < 0) {
-		pr_err("%s: updating dps failed\n", __func__);
-		mutex_unlock(&data->lock);
-		return err;
-	}
-	mutex_unlock(&data->lock);
-
-	data->dps = new_dps;
-	pr_info("%s: %d dps stored, sensitivity = %d\n",
-		__func__, data->dps, data->sensitivity_value);
+    if (lsm330dlc_gyro_set_dps(data, new_dps) < 0) {
+        return -1;
+    }
 
 	return count;
 }
@@ -569,6 +574,71 @@ static ssize_t lsm330dlc_gyro_show_enable(struct device *dev,
 {
 	struct lsm330dlc_gyro_data *data  = dev_get_drvdata(dev);
 	return sprintf(buf, "%d\n", data->enable);
+}
+
+static int lsm330dlc_gyro_enable(struct lsm330dlc_gyro_data *data, bool new_enable)
+{
+    int err = 0;
+
+    if (new_enable == data->enable)
+        return err;
+
+    mutex_lock(&data->lock);
+    if (new_enable) {
+        /* load cal data */
+        err = lsm330dlc_gyro_open_calibration(data);
+        if (err < 0 && err != -ENOENT)
+            pr_err("%s: lsm330dlc_gyro_open_calibration() failed\n",
+                __func__);
+        /* turning on */
+        err = i2c_smbus_write_i2c_block_data(data->client,
+            CTRL_REG1 | AC, sizeof(data->ctrl_regs),
+                        data->ctrl_regs);
+        if (err < 0) {
+            err = -EIO;
+            goto unlock;
+        }
+
+        if (data->interruptible) {
+            enable_irq(data->client->irq);
+
+            /* reset fifo entries */
+            err = lsm330dlc_gyro_restart_fifo(data);
+            if (err < 0) {
+                err = -EIO;
+                goto turn_off;
+            }
+        }
+
+        if (!data->interruptible) {
+            hrtimer_start(&data->timer,
+                data->polling_delay, HRTIMER_MODE_REL);
+        }
+    } else {
+        if (data->interruptible)
+            disable_irq(data->client->irq);
+        else {
+            hrtimer_cancel(&data->timer);
+            cancel_work_sync(&data->work);
+        }
+        /* turning off */
+        err = i2c_smbus_write_byte_data(data->client,
+                        CTRL_REG1, 0x00);
+        if (err < 0)
+            goto unlock;
+    }
+    data->enable = new_enable;
+
+    printk(KERN_INFO "%s, %d lsm330dlc_gyro enable is done.\n",	__func__, __LINE__);
+
+turn_off:
+    if (err < 0)
+        i2c_smbus_write_byte_data(data->client,
+                        CTRL_REG1, 0x00);
+unlock:
+    mutex_unlock(&data->lock);
+
+    return err;
 }
 
 static ssize_t lsm330dlc_gyro_set_enable(struct device *dev,
@@ -590,65 +660,7 @@ static ssize_t lsm330dlc_gyro_set_enable(struct device *dev,
 	printk(KERN_INFO "%s, %d enable : %d.\n", __func__, __LINE__,\
 		new_enable);
 
-	if (new_enable == data->enable)
-		return size;
-
-	mutex_lock(&data->lock);
-	if (new_enable) {
-		/* load cal data */
-		err = lsm330dlc_gyro_open_calibration(data);
-		if (err < 0 && err != -ENOENT)
-			pr_err("%s: lsm330dlc_gyro_open_calibration() failed\n",
-				__func__);
-		/* turning on */
-		err = i2c_smbus_write_i2c_block_data(data->client,
-			CTRL_REG1 | AC, sizeof(data->ctrl_regs),
-						data->ctrl_regs);
-		if (err < 0) {
-			err = -EIO;
-			goto unlock;
-		}
-
-		if (data->interruptible) {
-			enable_irq(data->client->irq);
-
-			/* reset fifo entries */
-			err = lsm330dlc_gyro_restart_fifo(data);
-			if (err < 0) {
-				err = -EIO;
-				goto turn_off;
-			}
-		}
-
-		if (!data->interruptible) {
-			hrtimer_start(&data->timer,
-				data->polling_delay, HRTIMER_MODE_REL);
-		}
-	} else {
-		if (data->interruptible)
-			disable_irq(data->client->irq);
-		else {
-			hrtimer_cancel(&data->timer);
-			cancel_work_sync(&data->work);
-		}
-		/* turning off */
-		err = i2c_smbus_write_byte_data(data->client,
-						CTRL_REG1, 0x00);
-		if (err < 0)
-			goto unlock;
-	}
-	data->enable = new_enable;
-
-	printk(KERN_INFO "%s, %d lsm330dlc_gyro enable is done.\n",\
-		__func__, __LINE__);
-
-turn_off:
-	if (err < 0)
-		i2c_smbus_write_byte_data(data->client,
-						CTRL_REG1, 0x00);
-unlock:
-	mutex_unlock(&data->lock);
-
+    err = lsm330dlc_gyro_enable(data, new_enable);
 	return err ? err : size;
 }
 
@@ -1461,10 +1473,76 @@ static long lsm330dlc_gyro_ioctl(struct file *file,
 	int err = 0;
 	struct lsm330dlc_gyro_data *data = container_of(file->private_data, struct lsm330dlc_gyro_data,
 			lsm330dlc_gyro_device);
+    bool enable = false;
 	u64 delay_ns;
+    int new_dps;
+    int res, i, j;
+    s16 raw[3] = {0,}, gyro_adjusted[3] = {0,};
+    char temp;
+    struct lsm330dlc_gyro gyro_xyz = {0,};
 
 	/* cmd mapping */
 	switch (cmd) {
+    case LSM330DLC_GYRO_SET_RANGE:
+        if(copy_from_user(&new_dps, (void __user *)arg, sizeof(new_dps)))
+            return -EFAULT;
+
+        err = lsm330dlc_gyro_set_dps(data, new_dps);
+        break;
+    case LSM330DLC_GYRO_SET_ENABLE:
+        if(copy_from_user(&enable, (void __user *)arg, sizeof(enable)))
+            return -EFAULT;
+
+        err = lsm330dlc_gyro_enable(data, enable);
+        break;
+	case LSM330DLC_GYRO_IOCTL_SET_DELAY:
+		if(copy_from_user(&delay_ns, (void __user *)arg, sizeof(delay_ns)))
+			return -EFAULT;
+
+		err = lsm330dlc_gyro_set_delay_ns(data, delay_ns);
+		break;
+	case LSM330DLC_GYRO_IOCTL_GET_DELAY:
+		if(put_user(lsm330dlc_gyro_get_delay_ns(data), (u64 __user *)arg))
+			return -EFAULT;
+		break;
+	case LSM330DLC_GYRO_IOCTL_READ_XYZ:
+
+        temp = i2c_smbus_read_byte_data(data->client, OUT_TEMP);
+        if (temp < 0) {
+            temp = 0;
+        }
+
+        err = lsm330dlc_gyro_read_values(data->client,
+                                         &data->xyz_data, data->entries);
+        if (err < 0)
+            break;
+
+        data->xyz_data.x -= data->cal_data.x;
+        data->xyz_data.y -= data->cal_data.y;
+        data->xyz_data.z -= data->cal_data.z;
+
+        if (data->axis_adjust) {
+            raw[0] = data->xyz_data.x;
+            raw[1] = data->xyz_data.y;
+            raw[2] = data->xyz_data.z;
+            for (i = 0; i < 3; i++) {
+                for (j = 0; j < 3; j++)
+                    gyro_adjusted[i]
+                            += position_map[data->position][i][j] * raw[j];
+            }
+        } else {
+            gyro_adjusted[0] = data->xyz_data.x;
+            gyro_adjusted[1] = data->xyz_data.y;
+            gyro_adjusted[2] = data->xyz_data.z;
+        }
+
+        gyro_xyz.x = gyro_adjusted[0] ;
+        gyro_xyz.y = gyro_adjusted[1] ;
+        gyro_xyz.z = gyro_adjusted[2] ;
+        if(copy_to_user((void __user *)arg, &gyro_xyz, sizeof(gyro_xyz)))
+            return -EFAULT;
+
+		break;		
 	default:
 		err = -EINVAL;
 		break;
@@ -1594,7 +1672,7 @@ static int lsm330dlc_gyro_probe(struct i2c_client *client,
 	
 	/* sensor HAL expects to find /dev/gyro */
 	data->lsm330dlc_accel_device.minor = MISC_DYNAMIC_MINOR;
-	data->lsm330dlc_accel_device.name = GYRO_DEV_NAME;
+	data->lsm330dlc_accel_device.name = GYR_DEV_FILE_NAME;
 	data->lsm330dlc_accel_device.fops = &lsm330dlc_gyro_fops;
 
 	err = misc_register(&data->lsm330dlc_accel_device);
