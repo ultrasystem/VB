@@ -41,6 +41,8 @@
 #define CALIBRATION_FILE_PATH	"/efs/gyro_cal_data"
 #endif
 
+#define GYRO_DEV_NAME 	"gyro"
+
 /* lsm330dlc_gyro chip id */
 #define DEVICE_ID	0xD4
 /* lsm330dlc_gyro gyroscope registers */
@@ -155,6 +157,7 @@ static const int position_map[][3][3] = {
 struct lsm330dlc_gyro_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
+	struct miscdevice lsm330dlc_gyro_device;
 	struct mutex lock;
 	struct workqueue_struct *lsm330dlc_gyro_wq;
 	struct work_struct work;
@@ -1438,6 +1441,45 @@ static DEVICE_ATTR(reg_data, 0664,
 /*************************************************************************/
 /* End of lsm330dlc_gyro Sysfs							 */
 /*************************************************************************/
+
+/*  open command for lsm330dlc_gyro device file  */
+static int lsm330dlc_gyro_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+/*  release command for lsm330dlc_gyro device file */
+static int lsm330dlc_gyro_close(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+/*  ioctl command for lsm330dlc_gyro device file */
+static long lsm330dlc_gyro_ioctl(struct file *file,
+		       unsigned int cmd, unsigned long arg)
+{
+	int err = 0;
+	struct lsm330dlc_gyro_data *data = container_of(file->private_data, struct lsm330dlc_gyro_data,
+			lsm330dlc_gyro_device);
+	u64 delay_ns;
+
+	/* cmd mapping */
+	switch (cmd) {
+	default:
+		err = -EINVAL;
+		break;
+	}
+
+	return err;
+}
+
+static const struct file_operations lsm330dlc_gyro_fops = {
+	.owner = THIS_MODULE,
+	.open = lsm330dlc_gyro_open,
+	.release = lsm330dlc_gyro_close,
+	.unlocked_ioctl = lsm330dlc_gyro_ioctl,
+};
+
 static int lsm330dlc_gyro_probe(struct i2c_client *client,
 			       const struct i2c_device_id *devid)
 {
@@ -1549,6 +1591,17 @@ static int lsm330dlc_gyro_probe(struct i2c_client *client,
 		/* this is the thread function we run on the work queue */
 		INIT_WORK(&data->work, lsm330dlc_gyro_work_func);
 	}
+	
+	/* sensor HAL expects to find /dev/gyro */
+	data->lsm330dlc_accel_device.minor = MISC_DYNAMIC_MINOR;
+	data->lsm330dlc_accel_device.name = GYRO_DEV_NAME;
+	data->lsm330dlc_accel_device.fops = &lsm330dlc_gyro_fops;
+
+	err = misc_register(&data->lsm330dlc_accel_device);
+	if (err) {
+		pr_err("%s: misc_register failed\n", __FILE__);
+		goto err_misc_register;
+	}
 
 	if (device_create_file(&input_dev->dev,
 				&dev_attr_enable) < 0) {
@@ -1569,7 +1622,6 @@ static int lsm330dlc_gyro_probe(struct i2c_client *client,
                         dev_attr_sensor_value.attr.name);
                 goto err_device_create;
         }
-
 
 	/* create device node for lsm330dlc_gyro digital gyroscope */
 	data->dev = sensors_classdev_register("gyro_sensor");
@@ -1682,6 +1734,8 @@ err_device_create:
 err_device_create_file2:
 	device_remove_file(&input_dev->dev, &dev_attr_enable);
 err_device_create_file:
+	misc_deregister(&data->lsm330dlc_gyro_device);
+err_misc_register:
 	if (data->interruptible)
 		free_irq(data->client->irq, data);
 	else
