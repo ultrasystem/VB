@@ -16,5 +16,5 @@ struct objmem_create_data {
 
 #define OBJMEM_IOCTL_CREATE		_IOW(__OBJMEMIOC, 1, struct objmem_create_data)
 #define OBJMEM_IOCTL_INTERVAL   _IOW(__OBJMEMIOC, 2, uint64_t)
-
+#define OBJMEM_IOCTL_GETPID     _IOR(__OBJMEMIOC, 3, pid_t)
 #endif	/* _LINUX_ASHMEM_H */

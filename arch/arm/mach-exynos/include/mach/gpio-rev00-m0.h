@@ -37,18 +37,18 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_CAM_AF_EN		EXYNOS4212_GPM0(4)
 //#define GPIO_CAM_VT_nRST	EXYNOS4212_GPM1(6)
 
-#ifdef CONFIG_GPIO_FREE
+#ifdef CONFIG_GPIO_INTERFACE
 
-#define GPIO_PWM_A              EXYNOS4212_GPM2(2)
-#define GPIO_PWM_B              EXYNOS4212_GPM1(6)
-#define GPIO_PWM_C              EXYNOS4212_GPM4(2)
-#define GPIO_PWM_D              EXYNOS4212_GPM4(3)
-#define GPIO_VOL_IN          	EXYNOS4_GPF1(2)
+#define GPIO_COMMON_1           EXYNOS4212_GPM2(2)
+#define GPIO_COMMON_2           EXYNOS4212_GPM1(6)
+#define GPIO_COMMON_3           EXYNOS4212_GPM4(2)
+#define GPIO_COMMON_4           EXYNOS4212_GPM4(3)
+#define GPIO_COMMON_5          	EXYNOS4_GPF1(2)
 
-#define GPIO_COMMON_1           EXYNOS4212_GPJ0(5)
-#define GPIO_COMMON_2           EXYNOS4_GPX0(2)
-#define GPIO_RGB_SDA_1_8V    	EXYNOS4_GPF0(0)
-#define GPIO_RGB_SCL_1_8V    	EXYNOS4_GPF0(1)
+#define GPIO_COMMON_6           EXYNOS4212_GPJ0(5)
+#define GPIO_COMMON_7           EXYNOS4_GPX0(2)
+#define GPIO_COMMON_8    	EXYNOS4_GPF0(0)
+#define GPIO_COMMON_9    	EXYNOS4_GPF0(1)
 
 #else
 

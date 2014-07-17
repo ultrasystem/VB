@@ -75,6 +75,8 @@
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
+#include <linux/ioctl.h>
+#include <linux/miscdevice.h>
 #include <linux/workqueue.h>
 #include <linux/gpio.h>
 #include <linux/device.h>
@@ -227,6 +229,7 @@ static const struct {
 struct lps331ap_prs_data {
 	struct i2c_client *client;
 	struct mutex lock;
+    struct miscdevice lps331ap_device;
 	struct delayed_work input_work;
 	struct input_dev *input_dev;
 	struct device *dev;
@@ -1129,16 +1132,38 @@ static int lps331ap_prs_disable(struct lps331ap_prs_data *prs)
 	return 0;
 }
 
+static int lps331ap_get_delay(struct lps331ap_prs_data *prs)
+{
+    int val;
+    mutex_lock(&prs->lock);
+    val = prs->poll_delay;
+    mutex_unlock(&prs->lock);
+    return val;
+}
+
 static ssize_t lps331ap_get_poll_delay(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
 	int val;
 	struct lps331ap_prs_data *prs = dev_get_drvdata(dev);
-	mutex_lock(&prs->lock);
-	val = prs->poll_delay;
-	mutex_unlock(&prs->lock);
+    val = lps331ap_get_delay(prs);
 	return sprintf(buf, "%d\n", val);
+}
+
+static void lps331ap_set_delay(struct lps331ap_prs_data *prs, unsigned long delay_ms)
+{
+    unsigned int delay_min = DELAY_MINIMUM;
+    delay_ms = max_t(unsigned int, (unsigned int)delay_ms, delay_min);
+
+    if (delay_ms == DELAY_MINIMUM)
+        printk(KERN_INFO "%s, minimum delay is 40ms!\n", __func__);
+
+    mutex_lock(&prs->lock);
+    prs->poll_delay = (unsigned int)delay_ms;
+    lps331ap_prs_update_odr(prs, delay_ms);
+    mutex_unlock(&prs->lock);
+    return ;
 }
 
 static ssize_t lps331ap_set_poll_delay(struct device *dev,
@@ -1147,7 +1172,6 @@ static ssize_t lps331ap_set_poll_delay(struct device *dev,
 {
 	struct lps331ap_prs_data *prs = dev_get_drvdata(dev);
 	unsigned long delay_ms = 0;
-	unsigned int delay_min = DELAY_MINIMUM;
 
 	if (strict_strtoul(buf, 10, &delay_ms))
 		return -EINVAL;
@@ -1155,15 +1179,8 @@ static ssize_t lps331ap_set_poll_delay(struct device *dev,
 		return -EINVAL;
 
 	printk(KERN_INFO "%s, delay_ms passed = %ld\n", __func__, delay_ms);
-	delay_ms = max_t(unsigned int, (unsigned int)delay_ms, delay_min);
+    lps331ap_set_delay(prs, delay_ms);
 
-	if (delay_ms == DELAY_MINIMUM)
-		printk(KERN_INFO "%s, minimum delay is 40ms!\n", __func__);
-
-	mutex_lock(&prs->lock);
-	prs->poll_delay = (unsigned int)delay_ms;
-	lps331ap_prs_update_odr(prs, delay_ms);
-	mutex_unlock(&prs->lock);
 	return size;
 }
 
@@ -1498,6 +1515,85 @@ err0:
 	return err;
 }
 
+
+/*  open command for lps331ap device file  */
+static int lps331ap_open(struct inode *inode, struct file *file)
+{
+    return 0;
+}
+
+/*  release command for lps331ap device file */
+static int lps331ap_close(struct inode *inode, struct file *file)
+{
+    return 0;
+}
+
+/*  ioctl command for lps331ap device file */
+static long lps331ap_ioctl(struct file *file,
+               unsigned int cmd, unsigned long arg)
+{
+    int err = 0;
+    struct lps331ap_prs_data *data = container_of(file->private_data, struct lps331ap_prs_data, lps331ap_device);
+    bool enable = false;
+    u32 delay_ns;
+    struct lps331ap_raw raw_data = {0,};
+
+    /* cmd mapping */
+    switch (cmd) {
+    case LPS331AP_IOCTL_SET_ENABLE:
+        if(copy_from_user(&enable, (void __user *)arg, sizeof(enable)))
+            return -EFAULT;
+
+        if (enable)
+            err = lps331ap_prs_enable(data);
+        else
+            err = lps331ap_prs_disable(data);
+
+        break;
+    case LPS331AP_IOCTL_SET_DELAY:
+        if(copy_from_user(&delay_ns, (void __user *)arg, sizeof(delay_ns)))
+            return -EFAULT;
+
+        lps331ap_set_delay(data, delay_ns);
+        break;
+    case LPS331AP_IOCTL_GET_DELAY:
+        if(put_user(lps331ap_get_delay(data), (u32 __user *)arg))
+            return -EFAULT;
+        break;
+    case LPS331AP_IOCTL_READ_DATA:
+    {
+        static struct outputdata output;
+
+        mutex_lock(&data->lock);
+        err = lps331ap_prs_get_presstemp_data(data, &output);
+        mutex_unlock(&data->lock);
+        if (err < 0) {
+
+            break;
+        }
+
+        raw_data.press = output.press;
+        raw_data.temperature = output.temperature;
+        if(copy_to_user((void __user *)arg, &raw_data, sizeof(raw_data)))
+            return -EFAULT;
+
+        break;
+    }
+    default:
+        err = -EINVAL;
+        break;
+    }
+
+    return err;
+}
+
+static const struct file_operations lps331ap_fops = {
+    .owner = THIS_MODULE,
+    .open = lps331ap_open,
+    .release = lps331ap_close,
+    .unlocked_ioctl = lps331ap_ioctl,
+};
+
 static int lps331ap_prs_probe(struct i2c_client *client,
 					const struct i2c_device_id *id)
 {
@@ -1634,6 +1730,17 @@ static int lps331ap_prs_probe(struct i2c_client *client,
 	/* As default, do not report information */
 	atomic_set(&prs->enabled, 0);
 
+    /* sensor HAL expects to find /dev/gyro */
+    prs->lps331ap_device.minor = MISC_DYNAMIC_MINOR;
+    prs->lps331ap_device.name = LPS331AP_DEV_FILE_NAME;
+    prs->lps331ap_device.fops = &lps331ap_fops;
+
+    err = misc_register(&prs->lps331ap_device);
+    if (err) {
+        pr_err("%s: misc_register failed\n", __FILE__);
+        goto err_misc_register;
+    }
+
 	/* sysfs for factory test */
 	prs->dev = sensors_classdev_register("barometer_sensor");
 	if (IS_ERR(prs->dev)) {
@@ -1688,6 +1795,8 @@ err_device_create_file2:
 err_device_create_file1:
 	sensors_classdev_unregister(prs->dev);
 err_device_create:
+    misc_deregister(&prs->lps331ap_device);
+err_misc_register:
 	sysfs_remove_group(&prs->input_dev->dev.kobj,
 					&barometer_attribute_group);
 err_input_cleanup:

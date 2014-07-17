@@ -121,10 +121,10 @@ static const struct odr_delay {
 	u8 odr; /* odr reg setting */
 	u64 delay_ns; /* odr in ns */
 } odr_delay_table[] = {
-	{ ODR760_BW100, 1315789LL },/* 760Hz */
-	{ ODR380_BW100, 2631578LL },/* 380Hz */
-	{ ODR190_BW70, 5263157LL }, /* 190Hz */
-	{ ODR95_BW25, 10526315LL }, /* 95Hz */
+    { ODR760_BW50, 1315789LL },/* 760Hz */
+    { ODR380_BW50, 2631578LL },/* 380Hz */
+    { ODR190_BW50, 5263157LL }, /* 190Hz */
+    { ODR95_BW25, 10526315LL }, /* 95Hz */
 };
 
 /*
@@ -1479,7 +1479,7 @@ static long lsm330dlc_gyro_ioctl(struct file *file,
     int i, j;
     s16 raw[3] = {0,}, gyro_adjusted[3] = {0,};
     char temp;
-    struct lsm330dlc_gyro gyro_xyz = {0,};
+    struct lsm330dlc_gyro_raw gyro_xyz = {0,};
 
 	/* cmd mapping */
 	switch (cmd) {
@@ -1539,6 +1539,7 @@ static long lsm330dlc_gyro_ioctl(struct file *file,
         gyro_xyz.x = gyro_adjusted[0] ;
         gyro_xyz.y = gyro_adjusted[1] ;
         gyro_xyz.z = gyro_adjusted[2] ;
+        gyro_xyz.t = temp ;
         if(copy_to_user((void __user *)arg, &gyro_xyz, sizeof(gyro_xyz)))
             return -EFAULT;
 

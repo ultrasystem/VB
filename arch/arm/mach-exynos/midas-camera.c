@@ -351,10 +351,12 @@ static int s5k6a3_gpio_request(void)
 		return ret;
 	}
 #else
-	if (system_rev < FRONT_CAM_MCLK_DEVIDED_REVISION)
+	printk(KERN_ERR, "CAM MCLK: %d:%d\n", system_rev, FRONT_CAM_MCLK_DEVIDED_REVISION);
+	if (system_rev < FRONT_CAM_MCLK_DEVIDED_REVISION) {
 		ret = gpio_request(GPIO_CAM_MCLK, "GPJ1");
-	else
+	} else {
 		ret = gpio_request(GPIO_VTCAM_MCLK, "GPM2");
+	}
 	if (ret) {
 		printk(KERN_ERR "fail to request gpio(GPIO_VTCAM_MCLK)\n");
 		return ret;

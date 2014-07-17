@@ -24,10 +24,11 @@
 #define DPS500		500
 #define DPS2000		2000
 
-struct lsm330dlc_gyro {
-        s16 x;
-        s16 y;
-        s16 z;
+struct lsm330dlc_gyro_raw {
+        int16_t x;
+        int16_t y;
+        int16_t z;
+	int8_t  t;
 };
 
 #define LSM330DLC_GYRO_IOCTL_BASE	80
@@ -36,7 +37,7 @@ struct lsm330dlc_gyro {
 #define LSM330DLC_GYRO_IOCTL_GET_DELAY\
 	_IOR(LSM330DLC_GYRO_IOCTL_BASE, 1, int64_t)
 #define LSM330DLC_GYRO_IOCTL_READ_DATA_XYZ\
-	_IOR(LSM330DLC_GYRO_IOCTL_BASE, 2, struct lsm330dlc_gyro)
+	_IOR(LSM330DLC_GYRO_IOCTL_BASE, 2, struct lsm330dlc_gyro_raw)
 #define LSM330DLC_GYRO_IOCTL_SET_RANGE \
     	_IOW(LSM330DLC_GYRO_IOCTL_BASE, 3, int)
 #define LSM330DLC_GYRO_IOCTL_SET_ENABLE   \

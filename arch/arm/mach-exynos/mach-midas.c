@@ -1905,8 +1905,10 @@ static struct i2c_gpio_platform_data i2c9_platdata = {
 	.sda_pin	= GPIO_PS_ALS_SDA_28V,
 	.scl_pin	= GPIO_PS_ALS_SCL_28V,
 #elif defined(CONFIG_SENSORS_CM36651)
+#ifndef CONFIG_GPIO_INTERFACE
 	.sda_pin	= GPIO_RGB_SDA_1_8V,
 	.scl_pin	= GPIO_RGB_SCL_1_8V,
+#endif
 #endif
 	.udelay	= 2, /* 250KHz */
 	.sda_is_open_drain	= 0,

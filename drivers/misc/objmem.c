@@ -21,6 +21,7 @@
 
 struct objmem_context {
     char            name[OBJMEM_FULL_NAME_LEN];    /* Memory Name */
+    pid_t	    pid;
     size_t          size;                        /* size of the mapping, in bytes */
     struct file     *data;                  /* Memory Data */
     spinlock_t      lock;
@@ -123,7 +124,7 @@ static int objmem_context_create(struct objmem_data *omdata, void __user *arg)
     memcpy(context->name, OBJMEM_NAME_PREFIX, OBJMEM_NAME_PREFIX_LEN);
     memcpy(context->name + OBJMEM_NAME_PREFIX_LEN, data.name, OBJMEM_NAME_LEN);
     context->name[OBJMEM_NAME_LEN-1] = '\0';
-
+    context->pid = current->pid;
     context->size = data.size;
     context->owner = omdata->owner;
 
@@ -255,6 +256,15 @@ static long objmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         break;
     case OBJMEM_IOCTL_INTERVAL:
         ret = objmem_hrtimer_create(omdata, (unsigned long) arg);
+        break;
+    case OBJMEM_IOCTL_GETPID:
+        if(omdata->context == NULL) {
+            return -EINVAL;
+        }
+
+        if (copy_to_user((void __user *)arg, &omdata->context->pid, sizeof(omdata->context->pid)))
+            return -EFAULT;
+        ret = 0;
         break;
     }
 

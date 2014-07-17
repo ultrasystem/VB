@@ -56,6 +56,7 @@
 #define	LPS331AP_PRS_I2C_SAD_L		((LPS331AP_PRS_I2C_SADROOT<<1)|SAD0L)
 #define	LPS331AP_PRS_I2C_SAD_H		((LPS331AP_PRS_I2C_SADROOT<<1)|SAD0H)
 #define	LPS331AP_PRS_DEV_NAME		"lps331ap"
+#define LPS331AP_DEV_FILE_NAME      "lps331ap_misc"
 
 /* Barometer and Termometer output data rate ODR */
 #define	LPS331AP_PRS_ODR_ONESH	0x00	/* one shot both		*/
@@ -74,6 +75,22 @@
 #define	SENSITIVITY_P		4096	/* =	LSB/mbar	*/
 #define	SENSITIVITY_P_SHIFT	12	/* =	4096 LSB/mbar	*/
 #define	TEMPERATURE_OFFSET	42.5f	/* =	42.5 degrC	*/
+
+struct lps331ap_raw {
+    int32_t press;
+    int16_t temperature;
+};
+
+#define LPS331AP_IOCTL_BASE	80
+#define LPS331AP_IOCTL_SET_DELAY\
+    _IOW(LPS331AP_IOCTL_BASE, 0, uint32_t)
+#define LPS331AP_IOCTL_GET_DELAY\
+    _IOR(LPS331AP_IOCTL_BASE, 1, uint32_t)
+#define LPS331AP_IOCTL_READ_DATA\
+    _IOR(LPS331AP_IOCTL_BASE, 2, struct lps331ap_raw)
+#define LPS331AP_IOCTL_SET_ENABLE   \
+        _IOW(LPS331AP_IOCTL_BASE, 3, bool)
+
 
 #ifdef __KERNEL__
 struct lps331ap_platform_data {

@@ -281,6 +281,8 @@ static int gyro_gpio_init(void)
 
 #if defined(CONFIG_SENSORS_GP2A) || defined(CONFIG_SENSORS_CM36651) || \
 	defined(CONFIG_SENSORS_CM3663)
+
+#ifndef CONFIG_GPIO_INTERFACE
 static int proximity_leda_on(bool onoff)
 {
 	pr_info("%s, onoff = %d\n", __func__, onoff);
@@ -308,6 +310,7 @@ static int optical_gpio_init(void)
 	s3c_gpio_setpull(GPIO_PS_ALS_EN, S3C_GPIO_PULL_NONE);
 	return ret;
 }
+#endif
 #endif
 
 #if defined(CONFIG_SENSORS_CM36651)
