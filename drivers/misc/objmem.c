@@ -50,6 +50,93 @@ static LIST_HEAD(objmem_list);
 static struct kmem_cache *objmem_area_cachep __read_mostly;
 static struct kmem_cache *objmem_ctx_cachep __read_mostly;
 
+static int objmem_context_queryopen(struct objmem_data *omdata, void __user *arg)
+{
+    struct objmem_context *next, *context = omdata->context;
+    struct objmem_query_open data;
+
+    printk(KERN_INFO "objmem: query & open context.\n");
+
+    if (unlikely(copy_from_user(&data, arg, sizeof(data)))) {
+
+        printk(KERN_ERR "objmem: can not copy user data.\n");
+        return -EFAULT;
+    }
+
+    printk(KERN_INFO "objmem: name: %s, pid: %d\n", data.name, data.pid);
+    if(context != NULL) {
+        printk(KERN_ERR "objmem: context is already.\n");
+        return -EINVAL;
+    }
+
+    mutex_lock(&objmem_mutex);
+
+    if ((omdata->owner->f_flags & 0xff) == O_RDONLY) {
+
+        printk(KERN_INFO "objmem: find context from exist entry.\n");
+
+        list_for_each_entry_safe(context, next, &objmem_list, entry) {
+
+            if( (context->pid == data.pid) &&
+                (strncmp(context->name + OBJMEM_NAME_PREFIX_LEN, data.name, strlen(data.name)) == 0 ))
+            {
+
+                printk(KERN_INFO "objmem: Open exist context for %s, Count: %d\n", context->name, atomic_read(&context->count));
+                atomic_inc(&context->count);
+                omdata->context = context;
+                break;
+            }
+        }
+
+        if(omdata->context != NULL) {
+
+            mutex_unlock(&objmem_mutex);
+            return 0;
+        }
+    }
+
+    mutex_unlock(&objmem_mutex);
+    return -EIO;
+}
+
+static int objmem_context_pid(struct objmem_data *omdata, pid_t pid)
+{
+    struct objmem_context *next, *context = omdata->context;
+
+    printk(KERN_INFO "objmem: open context by pid: %d.\n", pid);
+    if(context != NULL) {
+        printk(KERN_ERR "objmem: context is already.\n");
+        return -EINVAL;
+    }
+
+    mutex_lock(&objmem_mutex);
+
+    if ((omdata->owner->f_flags & 0xff) == O_RDONLY) {
+
+        printk(KERN_INFO "objmem: find context from exist entry.\n");
+
+        list_for_each_entry_safe(context, next, &objmem_list, entry) {
+
+            if(context->pid == pid) {
+
+                printk(KERN_INFO "objmem: Open exist context for %s, Count: %d\n", context->name, atomic_read(&context->count));
+                atomic_inc(&context->count);
+                omdata->context = context;
+                break;
+            }
+        }
+
+        if(omdata->context != NULL) {
+
+            mutex_unlock(&objmem_mutex);
+            return 0;
+        }
+    }
+
+    mutex_unlock(&objmem_mutex);
+    return -EIO;
+}
+
 static int objmem_context_create(struct objmem_data *omdata, void __user *arg)
 {
     struct objmem_context *next, *context = omdata->context;
@@ -95,12 +182,13 @@ static int objmem_context_create(struct objmem_data *omdata, void __user *arg)
     }
 
     if((omdata->owner->f_flags & 0xff) != O_WRONLY) {
+        mutex_unlock(&objmem_mutex);
         printk(KERN_ERR "objmem: Invalid open mode.\n");
         return -EINVAL;
     }
 
     if( (data.size == 0) || (data.size > (32 * 4096)) ) {
-
+        mutex_unlock(&objmem_mutex);
         printk(KERN_ERR "objmem: invalid data size.\n");
         return -EINVAL;
     }
@@ -248,7 +336,7 @@ static int objmem_hrtimer_create(struct objmem_data *omdata, uint64_t interval)
 static long objmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     struct objmem_data *omdata = file->private_data;
-    long ret = -ENOTTY;
+    long ret = -EINVAL;
 
     switch (cmd) {
     case OBJMEM_IOCTL_CREATE:
@@ -266,54 +354,14 @@ static long objmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             return -EFAULT;
         ret = 0;
         break;
+    case OBJMEM_IOCTL_OPENBYPID:
+        ret = objmem_context_pid(omdata, (pid_t) arg);
+        break;
+    case OBJMEM_IOCTL_QUERYOPEN:
+        ret = objmem_context_queryopen(omdata, (void __user *) arg);
+        break;
     }
 
-    return ret;
-}
-
-static int objmem_mmap(struct file *file, struct vm_area_struct *vma)
-{
-    struct objmem_data *omdata = file->private_data;
-    int ret = 0;
-
-    mutex_lock(&objmem_mutex);
-
-    if (omdata->context == NULL) {
-        ret = -EINVAL;
-        goto out;
-    }
-
-    /* user needs to SET_SIZE before mapping */
-    if (unlikely(!omdata->context->size)) {
-        ret = -EINVAL;
-        goto out;
-    }
-
-    if (!omdata->context->data) {
-        struct file *vmfile;
-
-        /* ... and allocate the backing shmem file */
-        vmfile = shmem_file_setup(omdata->context->name, omdata->context->size, vma->vm_flags);
-        if (unlikely(IS_ERR(vmfile))) {
-            ret = PTR_ERR(vmfile);
-            goto out;
-        }
-        omdata->context->data = vmfile;
-    }
-    get_file(omdata->context->data);
-
-    if (vma->vm_flags & VM_SHARED)
-        shmem_set_file(vma, omdata->context->data);
-    else {
-        if (vma->vm_file)
-            fput(vma->vm_file);
-        vma->vm_file = omdata->context->data;
-    }
-    vma->vm_flags |= VM_CAN_NONLINEAR;
-    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-
-out:
-    mutex_unlock(&objmem_mutex);
     return ret;
 }
 
@@ -479,7 +527,6 @@ static struct file_operations objmem_fops = {
     .read = objmem_read,
     .poll = objmem_poll,
     .llseek = no_llseek,
-    .mmap = objmem_mmap,
     .unlocked_ioctl = objmem_ioctl,
     .compat_ioctl = objmem_ioctl,
 };

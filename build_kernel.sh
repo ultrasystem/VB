@@ -49,9 +49,9 @@ gfind -name '*.ko' -exec gcp -av {} ../images/system/lib/modules/ \;
 ${CROSS_COMPILE}strip --strip-unneeded $RAMFS_TMP/lib/modules/*
 
 cd $RAMFS_TMP
-gfind | fakeroot cpio -H newc -o > $RAMFS_TMP.cpio 2>/dev/null
-ls -lh $RAMFS_TMP.cpio
-gzip -9 $RAMFS_TMP.cpio
+echo "Make ramdisk from $RAMFS_TMP to $RAMFS_TMP.cpio"
+/arm/android/tools/image/mkbootfs $RAMFS_TMP > $RAMFS_TMP.cpio
+/arm/android/tools/image/minigzip < $RAMFS_TMP.cpio > $RAMFS_TMP.cpio.gz
 cd -
 
 make -j4 zImage || exit 1

@@ -1541,14 +1541,17 @@ static long lps331ap_ioctl(struct file *file,
     /* cmd mapping */
     switch (cmd) {
     case LPS331AP_IOCTL_SET_ENABLE:
-        if(copy_from_user(&enable, (void __user *)arg, sizeof(enable)))
+        if(copy_from_user(&enable, (void __user *)arg, sizeof(enable))) {
+            pr_err("Invalid baro enable paramter.\n");
             return -EFAULT;
+        }
 
         if (enable)
             err = lps331ap_prs_enable(data);
         else
             err = lps331ap_prs_disable(data);
 
+        pr_info("baro enable: %d, status: %d\n", enable, err);
         break;
     case LPS331AP_IOCTL_SET_DELAY:
         if(copy_from_user(&delay_ns, (void __user *)arg, sizeof(delay_ns)))
@@ -1581,6 +1584,7 @@ static long lps331ap_ioctl(struct file *file,
     }
     default:
         err = -EINVAL;
+        pr_info("Invalid baro ctrl code: %x\n", cmd);
         break;
     }
 

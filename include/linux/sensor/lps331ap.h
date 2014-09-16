@@ -81,7 +81,7 @@ struct lps331ap_raw {
     int16_t temperature;
 };
 
-#define LPS331AP_IOCTL_BASE	80
+#define LPS331AP_IOCTL_BASE	89
 #define LPS331AP_IOCTL_SET_DELAY\
     _IOW(LPS331AP_IOCTL_BASE, 0, uint32_t)
 #define LPS331AP_IOCTL_GET_DELAY\
