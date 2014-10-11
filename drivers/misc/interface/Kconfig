@@ -1,0 +1,6 @@
+config GPIO_INTERFACE
+        tristate "Enable the Camera & LCD interface for GPIOs"
+        default y
+        help
+            Common GPIO interface for X4.
+

@@ -33393,3 +33393,8 @@ virt/kvm/iodev.h
 virt/kvm/iommu.c
 virt/kvm/irq_comm.c
 virt/kvm/kvm_main.c
+include/linux/i2c/interface_i2c.h
+drivers/input/keyboard/cypress/Makefile
+drivers/misc/interface/Makefile
+drivers/misc/interface/Kconfig
+drivers/misc/interface/interface.c

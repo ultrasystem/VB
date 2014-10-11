@@ -161,13 +161,6 @@ config OBJMEM
         help
             Object Memory Subsystem for X4.
 
-config GPIO_INTERFACE
-        tristate "Enable the Camera & LCD interface for GPIOs"
-        default n
-        help
-            Common GPIO interface for X4.
-
-
 config PHANTOM
 	tristate "Sensable PHANToM (PCI)"
 	depends on PCI
@@ -716,6 +709,7 @@ config MPU_SENSORS_MPU6050
     tristate "MPU6050"
     depends on I2C
 
+source "drivers/misc/interface/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

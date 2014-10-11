@@ -2035,98 +2035,107 @@ void __init midas_tsp_init(void)
 
 #else /* CONFIG_TOUCHSCREEN_ATMEL_MXT224_U1 */
 
+#ifdef CONFIG_GPIO_INTERFACE
+
+void tsp_charger_infom(bool en)
+{
+
+}
+
+#else
+
 /* MELFAS TSP */
 static bool enabled;
 int TSP_VDD_18V(bool on)
 {
-	struct regulator *regulator;
+    struct regulator *regulator;
 
-	if (enabled == on)
-		return 0;
+    if (enabled == on)
+        return 0;
 
-	regulator = regulator_get(NULL, "touch_1.8v");
-	if (IS_ERR(regulator))
-		return PTR_ERR(regulator);
+    regulator = regulator_get(NULL, "touch_1.8v");
+    if (IS_ERR(regulator))
+        return PTR_ERR(regulator);
 
-	if (on) {
-		regulator_enable(regulator);
-		/*printk(KERN_INFO "[TSP] melfas power on\n"); */
-	} else {
-		/*
-		 * TODO: If there is a case the regulator must be disabled
-		 * (e,g firmware update?), consider regulator_force_disable.
-		 */
-		if (regulator_is_enabled(regulator))
-			regulator_disable(regulator);
-	}
+    if (on) {
+        regulator_enable(regulator);
+        /*printk(KERN_INFO "[TSP] melfas power on\n"); */
+    } else {
+        /*
+         * TODO: If there is a case the regulator must be disabled
+         * (e,g firmware update?), consider regulator_force_disable.
+         */
+        if (regulator_is_enabled(regulator))
+            regulator_disable(regulator);
+    }
 
-	enabled = on;
-	regulator_put(regulator);
+    enabled = on;
+    regulator_put(regulator);
 
-	return 0;
+    return 0;
 }
 
 int melfas_power(bool on)
 {
-	struct regulator *regulator;
-	int ret;
-	if (enabled == on)
-		return 0;
+    struct regulator *regulator;
+    int ret;
+    if (enabled == on)
+        return 0;
 
-	regulator = regulator_get(NULL, "touch");
-	if (IS_ERR(regulator))
-		return PTR_ERR(regulator);
+    regulator = regulator_get(NULL, "touch");
+    if (IS_ERR(regulator))
+        return PTR_ERR(regulator);
 
-	printk(KERN_DEBUG "[TSP] %s %s\n", __func__, on ? "on" : "off");
+    printk(KERN_DEBUG "[TSP] %s %s\n", __func__, on ? "on" : "off");
 
-	if (on) {
-		/* Analog-Panel Power */
-		regulator_enable(regulator);
-		/* IO Logit Power */
-		TSP_VDD_18V(true);
-	} else {
-		/*
-		 * TODO: If there is a case the regulator must be disabled
-		 * (e,g firmware update?), consider regulator_force_disable.
-		 */
-		if (regulator_is_enabled(regulator)) {
-			regulator_disable(regulator);
-			TSP_VDD_18V(false);
-		}
-	}
+    if (on) {
+        /* Analog-Panel Power */
+        regulator_enable(regulator);
+        /* IO Logit Power */
+        TSP_VDD_18V(true);
+    } else {
+        /*
+         * TODO: If there is a case the regulator must be disabled
+         * (e,g firmware update?), consider regulator_force_disable.
+         */
+        if (regulator_is_enabled(regulator)) {
+            regulator_disable(regulator);
+            TSP_VDD_18V(false);
+        }
+    }
 
-	enabled = on;
-	regulator_put(regulator);
+    enabled = on;
+    regulator_put(regulator);
 
-	return 0;
+    return 0;
 }
 
 int is_melfas_vdd_on(void)
 {
-	int ret;
-	/* 3.3V */
-	static struct regulator *regulator;
+    int ret;
+    /* 3.3V */
+    static struct regulator *regulator;
 
-	if (!regulator) {
-		regulator = regulator_get(NULL, "touch");
-		if (IS_ERR(regulator)) {
-			ret = PTR_ERR(regulator);
-			pr_err("could not get touch, rc = %d\n", ret);
-			return ret;
-		}
+    if (!regulator) {
+        regulator = regulator_get(NULL, "touch");
+        if (IS_ERR(regulator)) {
+            ret = PTR_ERR(regulator);
+            pr_err("could not get touch, rc = %d\n", ret);
+            return ret;
+        }
 /*
-		ret = regulator_set_voltage(regulator, 3300000, 3300000);
-		if (ret) {
-			pr_err("%s: unable to set ldo17 voltage to 3.3V\n",
-			       __func__);
-			return ret;
-		} */
-	}
+        ret = regulator_set_voltage(regulator, 3300000, 3300000);
+        if (ret) {
+            pr_err("%s: unable to set ldo17 voltage to 3.3V\n",
+                   __func__);
+            return ret;
+        } */
+    }
 
-	if (regulator_is_enabled(regulator))
-		return 1;
-	else
-		return 0;
+    if (regulator_is_enabled(regulator))
+        return 1;
+    else
+        return 0;
 }
 
 int melfas_mux_fw_flash(bool to_gpios)
@@ -2255,6 +2264,7 @@ void __init midas_tsp_init(void)
 
 	i2c_register_board_info(3, i2c_devs3, ARRAY_SIZE(i2c_devs3));
 }
+#endif
 #endif /* CONFIG_TOUCHSCREEN_ATMEL_MXT224_U1 */
 
 /*

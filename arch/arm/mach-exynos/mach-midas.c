@@ -158,7 +158,9 @@ struct s3cfb_extdsp_lcd {
 #include <linux/host_notify.h>
 #endif
 
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_GPIO_INTERFACE
+#include <linux/i2c/interface_i2c.h>
+#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCH)
 #include <linux/i2c/touchkey_i2c.h>
 #endif
 
@@ -293,7 +295,191 @@ static struct spi_board_info spi2_board_info[] __initdata = {
 
 static struct i2c_board_info i2c_devs8_emul[];
 
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_GPIO_INTERFACE
+static void interface_init_hw(void)
+{
+    gpio_request(GPIO_IO_EN, "gpio_3_touch_en");
+    gpio_request(GPIO_IO_INT, "3_TOUCH_INT");
+    s3c_gpio_setpull(GPIO_IO_INT, S3C_GPIO_PULL_NONE);
+    s5p_register_gpio_interrupt(GPIO_IO_INT);
+    gpio_direction_input(GPIO_IO_INT);
+
+    i2c_devs8_emul[0].irq = gpio_to_irq(GPIO_IO_INT);
+    irq_set_irq_type(gpio_to_irq(GPIO_IO_INT), IRQF_TRIGGER_FALLING);
+    s3c_gpio_cfgpin(GPIO_IO_INT, S3C_GPIO_SFN(0xf));
+
+    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_DOWN);
+    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_DOWN);
+}
+
+static int interface_suspend(void)
+{
+    struct regulator *regulator;
+
+    regulator = regulator_get(NULL, TK_REGULATOR_NAME);
+    if (IS_ERR(regulator))
+        return 0;
+    if (regulator_is_enabled(regulator))
+        regulator_force_disable(regulator);
+
+    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_DOWN);
+    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_DOWN);
+
+    regulator_put(regulator);
+
+    return 1;
+}
+
+static int interface_resume(void)
+{
+    struct regulator *regulator;
+
+    regulator = regulator_get(NULL, TK_REGULATOR_NAME);
+    if (IS_ERR(regulator))
+        return 0;
+    regulator_enable(regulator);
+    regulator_put(regulator);
+
+    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_NONE);
+    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_NONE);
+
+    return 1;
+}
+
+static int interface_power_on(bool on)
+{
+    int ret;
+
+    if (on) {
+        gpio_direction_output(GPIO_IO_INT, 1);
+        irq_set_irq_type(gpio_to_irq(GPIO_IO_INT),
+            IRQF_TRIGGER_FALLING);
+        s3c_gpio_cfgpin(GPIO_IO_INT, S3C_GPIO_SFN(0xf));
+        s3c_gpio_setpull(GPIO_IO_INT, S3C_GPIO_PULL_NONE);
+    } else
+        gpio_direction_input(GPIO_IO_INT);
+
+    if (on)
+        ret = interface_resume();
+    else
+        ret = interface_suspend();
+
+    return ret;
+}
+
+static int interface_led_power_on(bool on)
+{
+    if (on)
+        gpio_direction_output(GPIO_IO_EN, 1);
+    else
+        gpio_direction_output(GPIO_IO_EN, 0);
+    return 1;
+}
+
+static bool enabled;
+int INTERFACE_VDD_18V(bool on)
+{
+    struct regulator *regulator;
+
+    if (enabled == on)
+        return 0;
+
+    regulator = regulator_get(NULL, "touch_1.8v");
+    if (IS_ERR(regulator))
+        return PTR_ERR(regulator);
+
+    if (on) {
+        regulator_enable(regulator);
+        printk(KERN_INFO "[INTERFACE] I/O power on\n");
+    } else {
+        /*
+         * TODO: If there is a case the regulator must be disabled
+         * (e,g firmware update?), consider regulator_force_disable.
+         */
+        if (regulator_is_enabled(regulator))
+            regulator_disable(regulator);
+    }
+
+    enabled = on;
+    regulator_put(regulator);
+
+    return 0;
+}
+
+static int interface_bus_power_on(bool on)
+{
+    struct regulator *regulator;
+    int ret;
+
+    if (enabled == on)
+        return 0;
+
+    regulator = regulator_get(NULL, "touch");
+    if (IS_ERR(regulator))
+        return PTR_ERR(regulator);
+
+    printk(KERN_DEBUG "[INTERFACE] %s %s\n", __func__, on ? "on" : "off");
+
+    if (on) {
+        /* Analog-Panel Power */
+        regulator_enable(regulator);
+        /* IO Logit Power */
+        INTERFACE_VDD_18V(true);
+    } else {
+        /*
+         * TODO: If there is a case the regulator must be disabled
+         * (e,g firmware update?), consider regulator_force_disable.
+         */
+        if (regulator_is_enabled(regulator)) {
+            regulator_disable(regulator);
+            INTERFACE_VDD_18V(false);
+        }
+    }
+
+    enabled = on;
+    regulator_put(regulator);
+
+    return 0;
+}
+
+int is_interface_vdd_on(void)
+{
+    int ret;
+    /* 3.3V */
+    static struct regulator *regulator;
+
+    if (!regulator) {
+        regulator = regulator_get(NULL, "touch");
+        if (IS_ERR(regulator)) {
+            ret = PTR_ERR(regulator);
+            pr_err("could not get touch, rc = %d\n", ret);
+            return ret;
+        }
+    }
+
+    if (regulator_is_enabled(regulator))
+        return 1;
+    else
+        return 0;
+}
+
+static struct interface_platform_data interface_pdata = {
+    .gpio_sda = GPIO_IO_SDA,
+    .gpio_scl = GPIO_IO_SCL,
+    .gpio_int = GPIO_IO_INT,
+    .gpio_start = S3C_GPIO_END,
+    .irq_base = IRQ_BOARD_INTERFAC_START,
+    .invert = 0,
+    .init_platform_hw = interface_init_hw,
+    .suspend = interface_suspend,
+    .resume = interface_resume,
+    .power_on = interface_power_on,
+    .bus_power_on = interface_bus_power_on,
+    .led_power_on = interface_led_power_on,
+};
+#endif
+
+#if (defined(CONFIG_KEYBOARD_CYPRESS_TOUCH) && !defined(CONFIG_GPIO_INTERFACE))
 static void touchkey_init_hw(void)
 {
 #if defined(CONFIG_MACH_M0) || defined(CONFIG_MACH_C1)
@@ -1238,8 +1424,13 @@ static struct platform_device bcm4334_bluetooth_device = {
 #endif
 
 static struct i2c_gpio_platform_data gpio_i2c_data8 = {
-	.sda_pin = GPIO_3_TOUCH_SDA,
-	.scl_pin = GPIO_3_TOUCH_SCL,
+#ifdef CONFIG_GPIO_INTERFACE
+    .sda_pin = GPIO_IO_SDA,
+    .scl_pin = GPIO_IO_SCL,
+#else
+    .sda_pin = GPIO_3_TOUCH_SDA,
+    .scl_pin = GPIO_3_TOUCH_SCL,
+#endif
 };
 
 struct platform_device s3c_device_i2c8 = {
@@ -1249,14 +1440,21 @@ struct platform_device s3c_device_i2c8 = {
 };
 
 /* I2C8 */
+
 static struct i2c_board_info i2c_devs8_emul[] = {
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_GPIO_INTERFACE
+    {
+        I2C_BOARD_INFO("sec_interface", 0x20),
+        .platform_data = &interface_pdata,
+    },
+#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCH)
 	{
 		I2C_BOARD_INFO("sec_touchkey", 0x20),
 		.platform_data = &touchkey_pdata,
 	},
 #endif
 };
+
 
 /* I2C9 */
 static struct i2c_board_info i2c_devs9_emul[] __initdata = {
@@ -2941,9 +3139,11 @@ static void __init midas_machine_init(void)
 #endif
 
 	s3c_i2c3_set_platdata(NULL);
+#ifndef CONFIG_GPIO_INTERFACE
 	midas_tsp_init();
 #ifndef CONFIG_TOUCHSCREEN_MELFAS_GC
 	midas_tsp_set_lcdtype(lcdtype);
+#endif
 #endif
 
 #ifdef CONFIG_LEDS_AAT1290A
@@ -2998,7 +3198,12 @@ static void __init midas_machine_init(void)
 	s3c_i2c7_set_platdata(NULL);
 	i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
 #endif
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+
+#ifdef CONFIG_GPIO_INTERFACE
+    interface_init_hw();
+#endif
+
+#if (defined(CONFIG_KEYBOARD_CYPRESS_TOUCH) && !defined(CONFIG_GPIO_INTERFACE))
 	touchkey_init_hw();
 #endif
 	i2c_register_board_info(8, i2c_devs8_emul, ARRAY_SIZE(i2c_devs8_emul));

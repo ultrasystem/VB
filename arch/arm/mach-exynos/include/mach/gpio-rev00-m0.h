@@ -47,8 +47,13 @@ extern void midas_config_sleep_gpio_table(void);
 
 #define GPIO_COMMON_6           EXYNOS4212_GPJ0(5)
 #define GPIO_COMMON_7           EXYNOS4_GPX0(2)
-#define GPIO_COMMON_8    	EXYNOS4_GPF0(0)
-#define GPIO_COMMON_9    	EXYNOS4_GPF0(1)
+#define GPIO_COMMON_8           EXYNOS4_GPF0(0)
+#define GPIO_COMMON_9           EXYNOS4_GPF0(1)
+
+#define GPIO_IO_SCL             EXYNOS4_GPL0(1)
+#define GPIO_IO_SDA             EXYNOS4_GPL0(2)
+#define GPIO_IO_INT             EXYNOS4212_GPJ0(3)
+#define GPIO_IO_EN              EXYNOS4212_GPM0(0)
 
 #else
 
@@ -63,6 +68,11 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_RGB_SDA_1_8V    	EXYNOS4_GPF0(0)
 #define GPIO_RGB_SCL_1_8V    	EXYNOS4_GPF0(1)
 #define GPIO_RGB_INT         	EXYNOS4_GPX2(2)
+
+#define GPIO_3_TOUCH_SCL	EXYNOS4_GPL0(1)
+#define GPIO_3_TOUCH_SDA	EXYNOS4_GPL0(2)
+#define GPIO_3_TOUCH_INT	EXYNOS4212_GPJ0(3)
+#define GPIO_3_TOUCH_EN		EXYNOS4212_GPM0(0)
 
 #endif
 
@@ -160,11 +170,7 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_FLM_TXD		EXYNOS4_GPA1(5)
 #define GPIO_FLM_TXD_AF		2
 
-#define GPIO_3_TOUCH_SCL	EXYNOS4_GPL0(1)
-#define GPIO_3_TOUCH_SDA	EXYNOS4_GPL0(2)
 #define GPIO_HDMI_EN		EXYNOS4_GPL0(4)
-#define GPIO_3_TOUCH_INT	EXYNOS4212_GPJ0(3)
-#define GPIO_3_TOUCH_EN		EXYNOS4212_GPM0(0)
 
 #define GPIO_PWM0		EXYNOS4_GPD0(0)
 #define GPIO_PWM1		EXYNOS4_GPD0(1)

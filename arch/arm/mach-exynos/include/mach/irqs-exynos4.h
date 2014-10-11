@@ -242,7 +242,14 @@
 #define IRQ_NR_BOARD		40
 #endif
 
+#ifdef CONFIG_GPIO_INTERFACE
+#define IRQ_BOARD_INTERFAC_START (IRQ_BOARD_START + IRQ_NR_BOARD)
+#define IRQ_NR_INTERFACE	32
+#else
+#define IRQ_NR_INTERFACE	0
+#endif
+
 /* Set the default NR_IRQS */
-#define NR_IRQS			(IRQ_GPIO_END + IRQ_NR_BOARD)
+#define NR_IRQS			(IRQ_GPIO_END + IRQ_NR_BOARD + IRQ_NR_INTERFACE)
 
 #endif /* __ASM_ARCH_IRQS_EXYNOS4_H */
