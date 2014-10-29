@@ -37,6 +37,9 @@
 #define	TK_REGULATOR_NAME	"touch"
 #endif
 
+#define INTERFACE_REG_SIZE  8
+#define INTERFACE_GPIO(nr)  (S3C_GPIO_END+nr)
+
 struct interface_platform_data {
 	int gpio_sda;
 	int gpio_scl;
@@ -57,6 +60,7 @@ struct interface_platform_data {
 struct interface_i2c {
 	struct i2c_client *client;
     struct gpio_chip gpio_chip;
+    struct miscdevice interface_misc;
 	struct early_suspend early_suspend;
 	struct mutex lock;
 	struct device	*dev;
@@ -76,7 +80,8 @@ struct interface_i2c {
     uint16_t reg_output;
     uint16_t reg_direction;
     uint16_t reg_invert;
-    void *gpio_base;
+    void *reg_base;
 };
 
 #endif /* _LINUX_CYPRESS_TOUCHKEY_I2C_H */
+

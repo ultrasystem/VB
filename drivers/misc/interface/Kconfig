@@ -4,3 +4,8 @@ config GPIO_INTERFACE
         help
             Common GPIO interface for X4.
 
+config GPIO_INTERFACE_PWM
+	tristate "Enable PWM function for interface board"
+	default y
+	help
+	    Common PWM interface for x4.

@@ -160,6 +160,7 @@ struct s3cfb_extdsp_lcd {
 
 #ifdef CONFIG_GPIO_INTERFACE
 #include <linux/i2c/interface_i2c.h>
+#include <linux/i2c/interface_pwm.h>
 #elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCH)
 #include <linux/i2c/touchkey_i2c.h>
 #endif
@@ -477,6 +478,102 @@ static struct interface_platform_data interface_pdata = {
     .bus_power_on = interface_bus_power_on,
     .led_power_on = interface_led_power_on,
 };
+
+int melfas_mux_fw_flash(bool to_gpios)
+{
+    pr_info("%s:to_gpios=%d\n", __func__, to_gpios);
+
+    /* TOUCH_EN is always an output */
+    if (to_gpios) {
+        if (gpio_request(GPIO_PWM_SCL, "GPIO_TSP_SCL"))
+            pr_err("failed to request gpio(GPIO_PWM_SCL)\n");
+        if (gpio_request(GPIO_PWM_SDA, "GPIO_TSP_SDA"))
+            pr_err("failed to request gpio(GPIO_PWM_SDA)\n");
+
+        gpio_direction_output(GPIO_PWM_INT, 0);
+        s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_OUTPUT);
+        s3c_gpio_setpull(GPIO_PWM_INT, S3C_GPIO_PULL_NONE);
+
+        gpio_direction_output(GPIO_PWM_SCL, 0);
+        s3c_gpio_cfgpin(GPIO_PWM_SCL, S3C_GPIO_OUTPUT);
+        s3c_gpio_setpull(GPIO_PWM_SCL, S3C_GPIO_PULL_NONE);
+
+        gpio_direction_output(GPIO_PWM_SDA, 0);
+        s3c_gpio_cfgpin(GPIO_PWM_SDA, S3C_GPIO_OUTPUT);
+        s3c_gpio_setpull(GPIO_PWM_SDA, S3C_GPIO_PULL_NONE);
+
+    } else {
+        gpio_direction_output(GPIO_PWM_INT, 1);
+        gpio_direction_input(GPIO_PWM_INT);
+        s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_SFN(0xf));
+        /*s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_INPUT); */
+        s3c_gpio_setpull(GPIO_PWM_INT, S3C_GPIO_PULL_NONE);
+        /*S3C_GPIO_PULL_UP */
+
+        gpio_direction_output(GPIO_PWM_SCL, 1);
+        gpio_direction_input(GPIO_PWM_SCL);
+        s3c_gpio_cfgpin(GPIO_PWM_SCL, S3C_GPIO_SFN(3));
+        s3c_gpio_setpull(GPIO_PWM_SCL, S3C_GPIO_PULL_NONE);
+
+        gpio_direction_output(GPIO_PWM_SDA, 1);
+        gpio_direction_input(GPIO_PWM_SDA);
+        s3c_gpio_cfgpin(GPIO_PWM_SDA, S3C_GPIO_SFN(3));
+        s3c_gpio_setpull(GPIO_PWM_SDA, S3C_GPIO_PULL_NONE);
+
+        gpio_free(GPIO_PWM_SCL);
+        gpio_free(GPIO_PWM_SDA);
+    }
+    return 0;
+}
+
+static struct interface_pwm_platform_data interface_pwm_pdata = {
+    .gpio_int = GPIO_PWM_INT,
+    .gpio_scl = GPIO_PWM_SCL,
+    .gpio_sda = GPIO_PWM_SDA,
+    .power = interface_bus_power_on,
+    .is_vdd_on = is_interface_vdd_on,
+    .npwm = PCA9685_MAXCHAN + 1,
+    .invert = 0,
+    .open_drain = 0,
+};
+
+static struct i2c_board_info i2c_devs3[] = {
+    {
+        I2C_BOARD_INFO("interface_pwm", 0x41),
+        .platform_data = &interface_pwm_pdata
+    },
+};
+
+void __init interface_pwm_set_platdata(struct interface_pwm_platform_data *pdata)
+{
+    if (!pdata)
+        pdata = &interface_pwm_pdata;
+
+    i2c_devs3[0].platform_data = pdata;
+}
+
+void __init interface_pwm_init(void)
+{
+    int gpio;
+    int ret;
+    printk(KERN_INFO "[PWM] interface_pwm_init() is called\n");
+
+    /* TSP_INT: XEINT_4 */
+    gpio = GPIO_PWM_INT;
+    ret = gpio_request(gpio, "TSP_INT");
+    if (ret)
+        pr_err("failed to request gpio(TSP_INT)\n");
+    s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0xf));
+    /* s3c_gpio_setpull(gpio, S3C_GPIO_PULL_UP); */
+    s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+
+    s5p_register_gpio_interrupt(gpio);
+    i2c_devs3[0].irq = gpio_to_irq(gpio);
+
+    printk(KERN_INFO "%s PWM : %d\n", __func__, i2c_devs3[0].irq);
+
+    i2c_register_board_info(3, i2c_devs3, ARRAY_SIZE(i2c_devs3));
+}
 #endif
 
 #if (defined(CONFIG_KEYBOARD_CYPRESS_TOUCH) && !defined(CONFIG_GPIO_INTERFACE))
@@ -3144,6 +3241,8 @@ static void __init midas_machine_init(void)
 #ifndef CONFIG_TOUCHSCREEN_MELFAS_GC
 	midas_tsp_set_lcdtype(lcdtype);
 #endif
+#else
+    interface_pwm_init();
 #endif
 
 #ifdef CONFIG_LEDS_AAT1290A

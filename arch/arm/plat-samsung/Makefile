@@ -83,7 +83,3 @@ obj-$(CONFIG_SAMSUNG_WAKEMASK)	+= wakeup-mask.o
 # PD support
 
 obj-$(CONFIG_SAMSUNG_PD)	+= pd.o
-
-# PWM support
-
-obj-$(CONFIG_HAVE_PWM)		+= pwm.o

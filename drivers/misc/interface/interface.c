@@ -26,7 +26,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
-
+#include <linux/sec_interface.h>
 #include <linux/i2c/interface_i2c.h>
 
 extern struct class *sec_class;
@@ -39,6 +39,13 @@ static const struct i2c_device_id sec_interface_id[] = {
 };
 
 MODULE_DEVICE_TABLE(i2c, sec_interface_id);
+
+struct interface_node {
+    struct file *owner;
+    uint8_t pin;
+};
+
+static struct kmem_cache *interface_area_cachep __read_mostly;
 
 static int tca6416_read_reg(struct i2c_client *client, int reg, uint16_t *val)
 {
@@ -495,24 +502,207 @@ static ssize_t tca6416_input_reg_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
     int ret;
+    uint16_t reg = 0;
     struct interface_i2c *it_i2c = dev_get_drvdata(dev);
 
-    ret = sprintf(buf, "%d\n", it_i2c->reg_input);
-    pr_info("[I/O] %s: input register=%d\n", __func__, it_i2c->reg_input);
+    ret = tca6416_read_reg(it_i2c->client, TCA6416_INPUT, &reg);
+    if(ret)
+        pr_info("[I/O] %s: input register read error: %d\n", __func__, ret);
+
+    ret = sprintf(buf, "%04x\n", reg);
+    pr_info("[I/O] %s: input register=%d\n", __func__, reg);
+
+    return ret;
+}
+
+static ssize_t tca6416_test_pins(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    int ret;
+    int i = 0;
+    uint16_t reg;
+    struct interface_i2c *chip = dev_get_drvdata(dev);
+
+    for(;i<TCA6416_PINS;i++) {
+        ret = gpio_request(INTERFACE_GPIO(i), "sec_interface");
+        if(ret) {
+            pr_info("[I/O] %s: request gpio %d error: %d\n", __func__, INTERFACE_GPIO(i), ret);
+            continue;
+        }
+
+        pr_info("[I/O] %s: request gpio %d successed\n", __func__, INTERFACE_GPIO(i));
+
+        gpio_direction_output(INTERFACE_GPIO(i), 1);
+        gpio_free(INTERFACE_GPIO(i));
+    }
+    ret = tca6416_read_reg(chip->client, TCA6416_OUTPUT, &reg);
+    if(ret)
+        pr_info("[I/O] %s: output register read error: %d\n", __func__, ret);
+
+    ret = sprintf(buf, "%04x\n", reg);
+    pr_info("[I/O] %s: output register=%d\n", __func__, reg);
 
     return ret;
 }
 
 static DEVICE_ATTR(input_reg, S_IRUGO | S_IWUSR | S_IWGRP,
            tca6416_input_reg_show, NULL);
+static DEVICE_ATTR(test_pin, S_IRUGO | S_IWUSR | S_IWGRP,
+           tca6416_test_pins, NULL);
 
 static struct attribute *interface_attributes[] = {
     &dev_attr_input_reg.attr,
+    &dev_attr_test_pin.attr,
     NULL,
 };
 
 static struct attribute_group interface_attr_group = {
     .attrs = interface_attributes,
+};
+
+static int interface_open(struct inode *inode, struct file *file)
+{
+    struct interface_node *idata;
+    nonseekable_open(inode, file);
+
+    idata = kmem_cache_zalloc(interface_area_cachep, GFP_KERNEL);
+    if (unlikely(!idata))
+        return -ENOMEM;
+
+    idata->pin = 0;
+
+    return 0;
+}
+
+static int interface_release(struct inode *ignored, struct file *file)
+{
+    struct interface_node *idata = file->private_data;
+
+    if(idata->pin > 0) {
+        gpio_direction_input(idata->pin);
+        gpio_free(idata->pin);
+    }
+
+    kmem_cache_free(interface_area_cachep, idata);
+    return 0;
+}
+
+
+static long interface_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+    struct interface_node *idata = file->private_data;
+    long ret = -EINVAL;
+    struct interface_request req;
+
+    switch (cmd) {
+    case INTERFACE_IOCTL_REQUEST:
+
+        if(idata->pin != 0) {
+            printk(KERN_ERR "[I/O]: This context is busy.\n");
+            return -EINVAL;
+        }
+
+        if (unlikely(copy_from_user(&req, (void __user *)arg, sizeof(req)))) {
+
+            printk(KERN_ERR "[I/O]: can not copy user data.\n");
+            return -EFAULT;
+        }
+
+        if((req.pin < INTERFACE_GPIO(0)) || (req.pin >= INTERFACE_GPIO(TCA6416_PINS))) {
+            printk(KERN_ERR "[I/O]: %d Pin is invalid.\n", req.pin);
+            return -EINVAL;
+        }
+
+        ret = gpio_request(INTERFACE_GPIO(req.pin), "sec_interface");
+        if(ret) {
+            pr_info("[I/O]: request gpio %d error: %ld\n", INTERFACE_GPIO(req.pin), ret);
+            return ret;
+        }
+
+        if(req.mode == INTERFACE_INPUT) {
+            ret = gpio_direction_input(INTERFACE_GPIO(req.pin));
+        } else {
+            ret = gpio_direction_output(INTERFACE_GPIO(req.pin), req.default_value);
+        }
+
+        if(ret) {
+            pr_info("[I/O]: set gpio %d to mode(%d) error: %ld\n", INTERFACE_GPIO(req.pin), req.mode, ret);
+            gpio_free(INTERFACE_GPIO(req.pin));
+            return ret;
+        }
+
+        idata->pin = INTERFACE_GPIO(req.pin);
+        break;
+    default:
+        break;
+    }
+
+    return ret;
+}
+
+
+static ssize_t interface_read(struct file *file, char __user *buf,
+               size_t len, loff_t *pos)
+{
+    struct interface_node *idata = file->private_data;
+    int ret = 0;
+    uint8_t val;
+
+    if(idata->pin == 0) {
+        return -EINVAL;
+    }
+
+    val = gpio_get_value(idata->pin);
+    ret = copy_to_user(buf, &val, sizeof(val));
+    if(ret == 0) {
+        return sizeof(val);
+    }
+
+    return -EIO;
+}
+
+static ssize_t interface_write(struct file *file, const char __user *buf,
+               size_t len, loff_t *pos)
+{
+    struct interface_node *idata = file->private_data;
+    int ret = 0;
+    uint8_t val;
+
+    if(idata->pin == 0) {
+        return -EINVAL;
+    }
+
+    if(len != sizeof(uint8_t)) {
+        return -EINVAL;
+    }
+
+    ret = copy_from_user(&val, buf, len);
+
+    val = gpio_get_value(idata->pin);
+    ret = copy_to_user(buf, &val, sizeof(val));
+    if(ret == 0) {
+        return sizeof(val);
+    }
+
+    return -EIO;
+}
+
+
+static unsigned interface_poll(struct file *file, struct poll_table_struct *wait)
+{
+    return 0;
+}
+
+static struct file_operations interface_fops = {
+    .owner = THIS_MODULE,
+    .open = interface_open,
+    .release = interface_release,
+    .read = interface_read,
+    .write = interface_write,
+    .poll = interface_poll,
+    .llseek = no_llseek,
+    .unlocked_ioctl = interface_ioctl,
+    .compat_ioctl = interface_ioctl,
 };
 
 static int i2c_interface_probe(struct i2c_client *client,
@@ -522,8 +712,6 @@ static int i2c_interface_probe(struct i2c_client *client,
     struct interface_i2c *it_i2c;
     unsigned char data;
     int ret;
-
-    printk(KERN_DEBUG "[I/O] i2c_interface_probe\n");
 
     if (pdata == NULL) {
         printk(KERN_ERR "%s: no pdata\n", __func__);
@@ -602,6 +790,14 @@ static int i2c_interface_probe(struct i2c_client *client,
         }
     }
 
+    it_i2c->interface_misc.minor = MISC_DYNAMIC_MINOR;
+    it_i2c->interface_misc.name = "sec_interface";
+    it_i2c->interface_misc.fops = &interface_fops;
+    ret = misc_register(&it_i2c->interface_misc);
+    if (unlikely(ret)) {
+        printk(KERN_ERR "[I/O]: failed to register misc device!\n");
+    }
+
     ret = tca6416_irq_setup(it_i2c, id);
     if (ret)
         goto out_failed;
@@ -611,9 +807,6 @@ static int i2c_interface_probe(struct i2c_client *client,
         dev_info(&client->dev, "tca6416 add gpio failed, err = %d\n", ret);
         goto out_failed_irq;
     }
-
-    it_i2c->gpio_base = ioremap(pdata->gpio_start, TCA6416_PINS);
-    dev_info(&client->dev, "TCA6416 Mapped Address: %x\n", it_i2c->gpio_base);
 
     i2c_set_clientdata(client, it_i2c);
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -654,6 +847,12 @@ static int i2c_interface_remove(struct i2c_client *client)
 #endif
 
     tca6416_irq_teardown(chip);
+
+
+    ret = misc_deregister(&chip->interface_misc);
+    if (unlikely(ret))
+        printk(KERN_ERR "[I/O]: failed to unregister misc device!\n");
+
     kfree(chip);
     return 0;
 }
@@ -705,6 +904,13 @@ static int __init interface_init(void)
 {
     int ret = 0;
 
+    interface_area_cachep = kmem_cache_create("interface_area_cache",
+                      sizeof(struct interface_node),0, 0, NULL);
+    if (unlikely(!interface_area_cachep)) {
+        printk(KERN_ERR "[I/O]: failed to create slab cache\n");
+        return -ENOMEM;
+    }
+
     ret = i2c_add_driver(&interface_i2c_driver);
 
     if (ret) {
@@ -719,6 +925,8 @@ static int __init interface_init(void)
 static void __exit interface_exit(void)
 {
     printk(KERN_DEBUG "[I/O] %s\n", __func__);
+
+    kmem_cache_destroy(interface_area_cachep);
     i2c_del_driver(&interface_i2c_driver);
 }
 

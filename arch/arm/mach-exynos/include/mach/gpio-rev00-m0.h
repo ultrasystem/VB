@@ -55,6 +55,10 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_IO_INT             EXYNOS4212_GPJ0(3)
 #define GPIO_IO_EN              EXYNOS4212_GPM0(0)
 
+#define GPIO_PWM_INT            EXYNOS4212_GPM2(3)
+#define GPIO_PWM_SDA        	EXYNOS4_GPA1(2)
+#define GPIO_PWM_SCL            EXYNOS4_GPA1(3)
+
 #else
 
 #define GPIO_VTCAM_MCLK         EXYNOS4212_GPM2(2)
@@ -73,6 +77,11 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_3_TOUCH_SDA	EXYNOS4_GPL0(2)
 #define GPIO_3_TOUCH_INT	EXYNOS4212_GPJ0(3)
 #define GPIO_3_TOUCH_EN		EXYNOS4212_GPM0(0)
+
+
+#define GPIO_TSP_INT		EXYNOS4212_GPM2(3)
+#define GPIO_TSP_SDA_18V	EXYNOS4_GPA1(2)
+#define GPIO_TSP_SCL_18V	EXYNOS4_GPA1(3)
 
 #endif
 
@@ -130,10 +139,6 @@ extern void midas_config_sleep_gpio_table(void);
 
 #define GPIO_PMIC_IRQ		EXYNOS4_GPX0(7)
 #define GPIO_IF_PMIC_IRQ	EXYNOS4_GPX1(5)
-
-#define GPIO_TSP_INT		EXYNOS4212_GPM2(3)
-#define GPIO_TSP_SDA_18V	EXYNOS4_GPA1(2)
-#define GPIO_TSP_SCL_18V	EXYNOS4_GPA1(3)
 
 #define GPIO_BT_EN		EXYNOS4_GPL0(6)
 #define GPIO_BT_WAKE		EXYNOS4_GPX3(1)

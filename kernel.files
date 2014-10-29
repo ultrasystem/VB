@@ -33398,3 +33398,4 @@ drivers/input/keyboard/cypress/Makefile
 drivers/misc/interface/Makefile
 drivers/misc/interface/Kconfig
 drivers/misc/interface/interface.c
+drivers/misc/interface/interface_pwm.c
