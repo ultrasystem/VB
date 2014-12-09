@@ -17,6 +17,8 @@
 #include <linux/earlysuspend.h>
 #endif
 
+#define HZ_TO_NS(x)         (1000000000UL / (x))
+
 
 #define TCA6416_INPUT		0
 #define TCA6416_OUTPUT		1
@@ -60,7 +62,7 @@ struct interface_platform_data {
 struct interface_i2c {
 	struct i2c_client *client;
     struct gpio_chip gpio_chip;
-    struct miscdevice interface_misc;
+    struct miscdevice *interface_misc;
 	struct early_suspend early_suspend;
 	struct mutex lock;
 	struct device	*dev;

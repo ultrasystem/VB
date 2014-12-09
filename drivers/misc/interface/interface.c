@@ -8,6 +8,7 @@
 #include <linux/irq.h>
 #include <linux/sched.h>
 #include <linux/pm.h>
+#include <linux/pwm.h>
 #include <linux/sysctl.h>
 #include <linux/proc_fs.h>
 #include <linux/delay.h>
@@ -522,6 +523,18 @@ static ssize_t tca6416_test_pins(struct device *dev,
     int i = 0;
     uint16_t reg;
     struct interface_i2c *chip = dev_get_drvdata(dev);
+    struct pwm_device *pwm = NULL;
+
+    pwm = pwm_request(129, "sec_interface_pwm");
+    if(pwm == NULL) {
+
+        pr_info("[I/O] %s: request PWM %d failed", __func__, 0);
+    } else {
+        pr_info("[I/O] %s: request PWM %d success", __func__, 0);
+        pwm_config(pwm, HZ_TO_NS(200), HZ_TO_NS(400));
+        pwm_enable(pwm);
+    }
+
 
     for(;i<TCA6416_PINS;i++) {
         ret = gpio_request(INTERFACE_GPIO(i), "sec_interface");
@@ -705,6 +718,12 @@ static struct file_operations interface_fops = {
     .compat_ioctl = interface_ioctl,
 };
 
+static struct miscdevice interface_misc = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = "sec_interface",
+    .fops = &interface_fops,
+};
+
 static int i2c_interface_probe(struct i2c_client *client,
     const struct i2c_device_id *id)
 {
@@ -714,6 +733,18 @@ static int i2c_interface_probe(struct i2c_client *client,
     int ret;
 
     if (pdata == NULL) {
+
+        uint16_t reg_output = 0, reg_direction = 0;
+
+        ret = tca6416_read_reg(client, TCA6416_OUTPUT, &reg_output);
+
+        printk(KERN_DEBUG "[I/O] TCA6416A OUTPUT: %04x, ret: %d\n", reg_output,ret);
+
+        ret = tca6416_read_reg(client, TCA6416_DIRECTION,
+                       &reg_direction);
+
+        printk(KERN_DEBUG "[I/O] TCA6416A TCA6416_DIRECTION: %04x, ret: %d\n", reg_direction,ret);
+
         printk(KERN_ERR "%s: no pdata\n", __func__);
         return -ENODEV;
     }
@@ -757,14 +788,12 @@ static int i2c_interface_probe(struct i2c_client *client,
 
     dev_info(&client->dev, "TCA6416 Name: %s\n", client->name);
 
-    it_i2c->pdata->bus_power_on(0);
-    msleep(50);
+    /*
     it_i2c->pdata->led_power_on(1);
     msleep(10);
     it_i2c->pdata->power_on(1);
     msleep(50);
-    it_i2c->pdata->bus_power_on(1);
-    msleep(200);
+    */
 
     interface_enable = 1;
     data = 1;
@@ -790,13 +819,7 @@ static int i2c_interface_probe(struct i2c_client *client,
         }
     }
 
-    it_i2c->interface_misc.minor = MISC_DYNAMIC_MINOR;
-    it_i2c->interface_misc.name = "sec_interface";
-    it_i2c->interface_misc.fops = &interface_fops;
-    ret = misc_register(&it_i2c->interface_misc);
-    if (unlikely(ret)) {
-        printk(KERN_ERR "[I/O]: failed to register misc device!\n");
-    }
+    it_i2c->interface_misc = &interface_misc;
 
     ret = tca6416_irq_setup(it_i2c, id);
     if (ret)
@@ -847,11 +870,6 @@ static int i2c_interface_remove(struct i2c_client *client)
 #endif
 
     tca6416_irq_teardown(chip);
-
-
-    ret = misc_deregister(&chip->interface_misc);
-    if (unlikely(ret))
-        printk(KERN_ERR "[I/O]: failed to unregister misc device!\n");
 
     kfree(chip);
     return 0;
@@ -911,6 +929,11 @@ static int __init interface_init(void)
         return -ENOMEM;
     }
 
+    ret = misc_register(&interface_misc);
+    if (unlikely(ret)) {
+        printk(KERN_ERR "[I/O]: failed to register misc device!\n");
+    }
+
     ret = i2c_add_driver(&interface_i2c_driver);
 
     if (ret) {
@@ -924,10 +947,15 @@ static int __init interface_init(void)
 
 static void __exit interface_exit(void)
 {
+    int ret;
     printk(KERN_DEBUG "[I/O] %s\n", __func__);
 
     kmem_cache_destroy(interface_area_cachep);
     i2c_del_driver(&interface_i2c_driver);
+
+    ret = misc_deregister(&interface_misc);
+    if (unlikely(ret))
+        printk(KERN_ERR "[I/O]: failed to unregister misc device!\n");
 }
 
 module_init(interface_init);

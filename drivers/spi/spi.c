@@ -24,10 +24,11 @@
 #include <linux/cache.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <linux/slab.h>
 #include <linux/mod_devicetable.h>
 #include <linux/spi/spi.h>
-#include <linux/of_spi.h>
+#include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
 
 static void spidev_release(struct device *dev)
@@ -506,6 +507,193 @@ spi_register_board_info(struct spi_board_info const *info, unsigned n)
 
 /*-------------------------------------------------------------------------*/
 
+#if defined(CONFIG_OF)
+/**
+ * of_register_spi_devices() - Register child devices onto the SPI bus
+ * @master:	Pointer to spi_master device
+ *
+ * Registers an spi_device for each child node of master node which has a 'reg'
+ * property.
+ */
+static void of_register_spi_devices(struct spi_master *master)
+{
+	struct spi_device *spi;
+	struct device_node *nc;
+	const __be32 *prop;
+	char modalias[SPI_NAME_SIZE + 4];
+	int rc;
+	int len;
+
+	if (!master->dev.of_node)
+		return;
+
+	for_each_available_child_of_node(master->dev.of_node, nc) {
+		/* Alloc an spi_device */
+		spi = spi_alloc_device(master);
+		if (!spi) {
+			dev_err(&master->dev, "spi_device alloc error for %s\n",
+				nc->full_name);
+			spi_dev_put(spi);
+			continue;
+		}
+
+		/* Select device driver */
+		if (of_modalias_node(nc, spi->modalias,
+				     sizeof(spi->modalias)) < 0) {
+			dev_err(&master->dev, "cannot find modalias for %s\n",
+				nc->full_name);
+			spi_dev_put(spi);
+			continue;
+		}
+
+		/* Device address */
+		prop = of_get_property(nc, "reg", &len);
+		if (!prop || len < sizeof(*prop)) {
+			dev_err(&master->dev, "%s has no 'reg' property\n",
+				nc->full_name);
+			spi_dev_put(spi);
+			continue;
+		}
+		spi->chip_select = be32_to_cpup(prop);
+
+		/* Mode (clock phase/polarity/etc.) */
+		if (of_find_property(nc, "spi-cpha", NULL))
+			spi->mode |= SPI_CPHA;
+		if (of_find_property(nc, "spi-cpol", NULL))
+			spi->mode |= SPI_CPOL;
+		if (of_find_property(nc, "spi-cs-high", NULL))
+			spi->mode |= SPI_CS_HIGH;
+		if (of_find_property(nc, "spi-3wire", NULL))
+			spi->mode |= SPI_3WIRE;
+
+		/* Device speed */
+		prop = of_get_property(nc, "spi-max-frequency", &len);
+		if (!prop || len < sizeof(*prop)) {
+			dev_err(&master->dev, "%s has no 'spi-max-frequency' property\n",
+				nc->full_name);
+			spi_dev_put(spi);
+			continue;
+		}
+		spi->max_speed_hz = be32_to_cpup(prop);
+
+		/* IRQ */
+		spi->irq = irq_of_parse_and_map(nc, 0);
+
+		/* Store a pointer to the node in the device structure */
+		of_node_get(nc);
+		spi->dev.of_node = nc;
+
+		/* Register the new device */
+		snprintf(modalias, sizeof(modalias), "%s%s", SPI_MODULE_PREFIX,
+			 spi->modalias);
+		request_module(modalias);
+		rc = spi_add_device(spi);
+		if (rc) {
+			dev_err(&master->dev, "spi_device register error %s\n",
+				nc->full_name);
+			spi_dev_put(spi);
+		}
+
+	}
+}
+#else
+static void of_register_spi_devices(struct spi_master *master) { }
+#endif
+
+#ifdef CONFIG_ACPI
+static int acpi_spi_add_resource(struct acpi_resource *ares, void *data)
+{
+	struct spi_device *spi = data;
+
+	if (ares->type == ACPI_RESOURCE_TYPE_SERIAL_BUS) {
+		struct acpi_resource_spi_serialbus *sb;
+
+		sb = &ares->data.spi_serial_bus;
+		if (sb->type == ACPI_RESOURCE_SERIAL_TYPE_SPI) {
+			spi->chip_select = sb->device_selection;
+			spi->max_speed_hz = sb->connection_speed;
+
+			if (sb->clock_phase == ACPI_SPI_SECOND_PHASE)
+				spi->mode |= SPI_CPHA;
+			if (sb->clock_polarity == ACPI_SPI_START_HIGH)
+				spi->mode |= SPI_CPOL;
+			if (sb->device_polarity == ACPI_SPI_ACTIVE_HIGH)
+				spi->mode |= SPI_CS_HIGH;
+		}
+	} else if (spi->irq < 0) {
+		struct resource r;
+
+		if (acpi_dev_resource_interrupt(ares, 0, &r))
+			spi->irq = r.start;
+	}
+
+	/* Always tell the ACPI core to skip this resource */
+	return 1;
+}
+
+static acpi_status acpi_spi_add_device(acpi_handle handle, u32 level,
+				       void *data, void **return_value)
+{
+	struct spi_master *master = data;
+	struct list_head resource_list;
+	struct acpi_device *adev;
+	struct spi_device *spi;
+	int ret;
+
+	if (acpi_bus_get_device(handle, &adev))
+		return AE_OK;
+	if (acpi_bus_get_status(adev) || !adev->status.present)
+		return AE_OK;
+
+	spi = spi_alloc_device(master);
+	if (!spi) {
+		dev_err(&master->dev, "failed to allocate SPI device for %s\n",
+			dev_name(&adev->dev));
+		return AE_NO_MEMORY;
+	}
+
+	ACPI_HANDLE_SET(&spi->dev, handle);
+	spi->irq = -1;
+
+	INIT_LIST_HEAD(&resource_list);
+	ret = acpi_dev_get_resources(adev, &resource_list,
+				     acpi_spi_add_resource, spi);
+	acpi_dev_free_resource_list(&resource_list);
+
+	if (ret < 0 || !spi->max_speed_hz) {
+		spi_dev_put(spi);
+		return AE_OK;
+	}
+
+	strlcpy(spi->modalias, dev_name(&adev->dev), sizeof(spi->modalias));
+	if (spi_add_device(spi)) {
+		dev_err(&master->dev, "failed to add SPI device %s from ACPI\n",
+			dev_name(&adev->dev));
+		spi_dev_put(spi);
+	}
+
+	return AE_OK;
+}
+
+static void acpi_register_spi_devices(struct spi_master *master)
+{
+	acpi_status status;
+	acpi_handle handle;
+
+	handle = ACPI_HANDLE(master->dev.parent);
+	if (!handle)
+		return;
+
+	status = acpi_walk_namespace(ACPI_TYPE_DEVICE, handle, 1,
+				     acpi_spi_add_device, NULL,
+				     master, NULL);
+	if (ACPI_FAILURE(status))
+		dev_warn(&master->dev, "failed to enumerate SPI slaves\n");
+}
+#else
+static inline void acpi_register_spi_devices(struct spi_master *master) {}
+#endif /* CONFIG_ACPI */
+
 static void spi_master_release(struct device *dev)
 {
 	struct spi_master *master;
@@ -628,8 +816,9 @@ int spi_register_master(struct spi_master *master)
 
 	status = 0;
 
-	/* Register devices from the device tree */
-	of_register_spi_devices(master);
+        /* Register devices from the device tree and ACPI */
+        of_register_spi_devices(master);
+        acpi_register_spi_devices(master);
 done:
 	return status;
 }

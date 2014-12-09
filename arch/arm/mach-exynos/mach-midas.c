@@ -295,22 +295,30 @@ static struct spi_board_info spi2_board_info[] __initdata = {
 #endif
 
 static struct i2c_board_info i2c_devs8_emul[];
+static struct i2c_board_info i2c_devs3[] ;
+
+#ifndef CONFIG_FB_S5P
+int lcdfreq_lock(struct device *dev)
+{
+    return  -EINVAL;
+}
+#endif
 
 #ifdef CONFIG_GPIO_INTERFACE
 static void interface_init_hw(void)
 {
+    int ret;
     gpio_request(GPIO_IO_EN, "gpio_3_touch_en");
-    gpio_request(GPIO_IO_INT, "3_TOUCH_INT");
-    s3c_gpio_setpull(GPIO_IO_INT, S3C_GPIO_PULL_NONE);
-    s5p_register_gpio_interrupt(GPIO_IO_INT);
-    gpio_direction_input(GPIO_IO_INT);
 
-    i2c_devs8_emul[0].irq = gpio_to_irq(GPIO_IO_INT);
-    irq_set_irq_type(gpio_to_irq(GPIO_IO_INT), IRQF_TRIGGER_FALLING);
+    /* TOUCH_INT */
+    ret = gpio_request(GPIO_IO_INT, "3_TOUCH_INT");
+    if (ret)
+        pr_err("failed to request gpio(3_TOUCH_INT)\n");
     s3c_gpio_cfgpin(GPIO_IO_INT, S3C_GPIO_SFN(0xf));
+    s3c_gpio_setpull(GPIO_IO_INT, S3C_GPIO_PULL_NONE);
 
-    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_DOWN);
-    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_DOWN);
+    s5p_register_gpio_interrupt(GPIO_IO_INT);
+    i2c_devs3[1].irq = gpio_to_irq(GPIO_IO_INT);
 }
 
 static int interface_suspend(void)
@@ -322,9 +330,6 @@ static int interface_suspend(void)
         return 0;
     if (regulator_is_enabled(regulator))
         regulator_force_disable(regulator);
-
-    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_DOWN);
-    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_DOWN);
 
     regulator_put(regulator);
 
@@ -340,9 +345,6 @@ static int interface_resume(void)
         return 0;
     regulator_enable(regulator);
     regulator_put(regulator);
-
-    s3c_gpio_setpull(GPIO_IO_SCL, S3C_GPIO_PULL_NONE);
-    s3c_gpio_setpull(GPIO_IO_SDA, S3C_GPIO_PULL_NONE);
 
     return 1;
 }
@@ -410,6 +412,7 @@ int INTERFACE_VDD_18V(bool on)
 static int interface_bus_power_on(bool on)
 {
     struct regulator *regulator;
+    struct regulator *regulator_tsp;
     int ret;
 
     if (enabled == on)
@@ -419,9 +422,14 @@ static int interface_bus_power_on(bool on)
     if (IS_ERR(regulator))
         return PTR_ERR(regulator);
 
+    regulator_tsp = regulator_get(NULL, "TSP_AVDD_3.3V");
+    if (IS_ERR(regulator_tsp))
+        return PTR_ERR(regulator_tsp);
+
     printk(KERN_DEBUG "[INTERFACE] %s %s\n", __func__, on ? "on" : "off");
 
     if (on) {
+        regulator_enable(regulator_tsp);
         /* Analog-Panel Power */
         regulator_enable(regulator);
         /* IO Logit Power */
@@ -435,10 +443,15 @@ static int interface_bus_power_on(bool on)
             regulator_disable(regulator);
             INTERFACE_VDD_18V(false);
         }
+
+        if (regulator_is_enabled(regulator_tsp)) {
+            regulator_disable(regulator_tsp);
+        }
     }
 
     enabled = on;
     regulator_put(regulator);
+    regulator_put(regulator_tsp);
 
     return 0;
 }
@@ -465,8 +478,8 @@ int is_interface_vdd_on(void)
 }
 
 static struct interface_platform_data interface_pdata = {
-    .gpio_sda = GPIO_IO_SDA,
-    .gpio_scl = GPIO_IO_SCL,
+    .gpio_sda = GPIO_PWM_SDA,
+    .gpio_scl = GPIO_PWM_SCL,
     .gpio_int = GPIO_IO_INT,
     .gpio_start = S3C_GPIO_END,
     .irq_base = IRQ_BOARD_INTERFAC_START,
@@ -479,68 +492,30 @@ static struct interface_platform_data interface_pdata = {
     .led_power_on = interface_led_power_on,
 };
 
-int melfas_mux_fw_flash(bool to_gpios)
-{
-    pr_info("%s:to_gpios=%d\n", __func__, to_gpios);
-
-    /* TOUCH_EN is always an output */
-    if (to_gpios) {
-        if (gpio_request(GPIO_PWM_SCL, "GPIO_TSP_SCL"))
-            pr_err("failed to request gpio(GPIO_PWM_SCL)\n");
-        if (gpio_request(GPIO_PWM_SDA, "GPIO_TSP_SDA"))
-            pr_err("failed to request gpio(GPIO_PWM_SDA)\n");
-
-        gpio_direction_output(GPIO_PWM_INT, 0);
-        s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_OUTPUT);
-        s3c_gpio_setpull(GPIO_PWM_INT, S3C_GPIO_PULL_NONE);
-
-        gpio_direction_output(GPIO_PWM_SCL, 0);
-        s3c_gpio_cfgpin(GPIO_PWM_SCL, S3C_GPIO_OUTPUT);
-        s3c_gpio_setpull(GPIO_PWM_SCL, S3C_GPIO_PULL_NONE);
-
-        gpio_direction_output(GPIO_PWM_SDA, 0);
-        s3c_gpio_cfgpin(GPIO_PWM_SDA, S3C_GPIO_OUTPUT);
-        s3c_gpio_setpull(GPIO_PWM_SDA, S3C_GPIO_PULL_NONE);
-
-    } else {
-        gpio_direction_output(GPIO_PWM_INT, 1);
-        gpio_direction_input(GPIO_PWM_INT);
-        s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_SFN(0xf));
-        /*s3c_gpio_cfgpin(GPIO_PWM_INT, S3C_GPIO_INPUT); */
-        s3c_gpio_setpull(GPIO_PWM_INT, S3C_GPIO_PULL_NONE);
-        /*S3C_GPIO_PULL_UP */
-
-        gpio_direction_output(GPIO_PWM_SCL, 1);
-        gpio_direction_input(GPIO_PWM_SCL);
-        s3c_gpio_cfgpin(GPIO_PWM_SCL, S3C_GPIO_SFN(3));
-        s3c_gpio_setpull(GPIO_PWM_SCL, S3C_GPIO_PULL_NONE);
-
-        gpio_direction_output(GPIO_PWM_SDA, 1);
-        gpio_direction_input(GPIO_PWM_SDA);
-        s3c_gpio_cfgpin(GPIO_PWM_SDA, S3C_GPIO_SFN(3));
-        s3c_gpio_setpull(GPIO_PWM_SDA, S3C_GPIO_PULL_NONE);
-
-        gpio_free(GPIO_PWM_SCL);
-        gpio_free(GPIO_PWM_SDA);
-    }
-    return 0;
-}
-
 static struct interface_pwm_platform_data interface_pwm_pdata = {
     .gpio_int = GPIO_PWM_INT,
     .gpio_scl = GPIO_PWM_SCL,
     .gpio_sda = GPIO_PWM_SDA,
-    .power = interface_bus_power_on,
+    .power_on = interface_power_on,
+    .bus_power_on = interface_bus_power_on,
+    .led_power_on = interface_led_power_on,
     .is_vdd_on = is_interface_vdd_on,
     .npwm = PCA9685_MAXCHAN + 1,
+    .base = CONFIG_SAMSUNG_PWM_EXTRA_BASE,
     .invert = 0,
     .open_drain = 0,
 };
 
 static struct i2c_board_info i2c_devs3[] = {
     {
-        I2C_BOARD_INFO("interface_pwm", 0x41),
-        .platform_data = &interface_pwm_pdata
+        .type = "sec_interface_pwm",
+        .addr = 0x42,
+        .platform_data = &interface_pwm_pdata,
+    },
+    {
+        .type = "sec_interface",
+        .addr = 0x20,
+        .platform_data = &interface_pdata,
     },
 };
 
@@ -570,8 +545,10 @@ void __init interface_pwm_init(void)
     s5p_register_gpio_interrupt(gpio);
     i2c_devs3[0].irq = gpio_to_irq(gpio);
 
-    printk(KERN_INFO "%s PWM : %d\n", __func__, i2c_devs3[0].irq);
+    interface_init_hw();
 
+    printk(KERN_INFO "%s PWM : %d\n", __func__, i2c_devs3[0].irq);
+    printk(KERN_INFO "%s GPIO : %d\n", __func__, i2c_devs3[1].irq);
     i2c_register_board_info(3, i2c_devs3, ARRAY_SIZE(i2c_devs3));
 }
 #endif
@@ -1541,8 +1518,7 @@ struct platform_device s3c_device_i2c8 = {
 static struct i2c_board_info i2c_devs8_emul[] = {
 #ifdef CONFIG_GPIO_INTERFACE
     {
-        I2C_BOARD_INFO("sec_interface", 0x20),
-        .platform_data = &interface_pdata,
+        I2C_BOARD_INFO("sec_interface_extra", 0x20),
     },
 #elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCH)
 	{
@@ -2461,7 +2437,7 @@ static struct platform_device *midas_devices[] __initdata = {
 	&s3c_device_i2c6,
 #endif
 	&s3c_device_i2c7,
-	&s3c_device_i2c8,
+    &s3c_device_i2c8,
 	&s3c_device_i2c9,
 #if defined(CONFIG_SENSORS_AK8975C) || defined(CONFIG_SENSORS_AK8975)
 	&s3c_device_i2c10,
@@ -3241,8 +3217,6 @@ static void __init midas_machine_init(void)
 #ifndef CONFIG_TOUCHSCREEN_MELFAS_GC
 	midas_tsp_set_lcdtype(lcdtype);
 #endif
-#else
-    interface_pwm_init();
 #endif
 
 #ifdef CONFIG_LEDS_AAT1290A
@@ -3299,13 +3273,13 @@ static void __init midas_machine_init(void)
 #endif
 
 #ifdef CONFIG_GPIO_INTERFACE
-    interface_init_hw();
+    interface_pwm_init();
 #endif
 
 #if (defined(CONFIG_KEYBOARD_CYPRESS_TOUCH) && !defined(CONFIG_GPIO_INTERFACE))
 	touchkey_init_hw();
 #endif
-	i2c_register_board_info(8, i2c_devs8_emul, ARRAY_SIZE(i2c_devs8_emul));
+    i2c_register_board_info(8, i2c_devs8_emul, ARRAY_SIZE(i2c_devs8_emul));
 
 #if !defined(CONFIG_MACH_GC1) && !defined(CONFIG_LEDS_AAT1290A)
 	gpio_request(GPIO_3_TOUCH_INT, "3_TOUCH_INT");

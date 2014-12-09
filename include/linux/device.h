@@ -472,7 +472,8 @@ extern void *devres_remove(struct device *dev, dr_release_t release,
 			   dr_match_t match, void *match_data);
 extern int devres_destroy(struct device *dev, dr_release_t release,
 			  dr_match_t match, void *match_data);
-
+extern int devres_release(struct device *dev, dr_release_t release,
+                          dr_match_t match, void *match_data);
 /* devres group */
 extern void * __must_check devres_open_group(struct device *dev, void *id,
 					     gfp_t gfp);
@@ -752,7 +753,6 @@ extern struct device *device_create(struct class *cls, struct device *parent,
 				    const char *fmt, ...)
 				    __attribute__((format(printf, 5, 6)));
 extern void device_destroy(struct class *cls, dev_t devt);
-
 /*
  * Platform "fixup" functions - allow the platform to have their say
  * about devices and actions that the general device layer doesn't

@@ -33399,3 +33399,6 @@ drivers/misc/interface/Makefile
 drivers/misc/interface/Kconfig
 drivers/misc/interface/interface.c
 drivers/misc/interface/interface_pwm.c
+drivers/pwm/core.c
+drivers/pwm/pwm-pca9685.c
+drivers/pwm/pwm-samsung.c

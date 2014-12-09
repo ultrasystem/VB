@@ -137,6 +137,14 @@ config SAMSUNG_GPIO_EXTRA
 	  provides. This allows expanding the GPIO space for use with
 	  GPIO expanders.
 
+config SAMSUNG_PWM_EXTRA_BASE
+        int "Basic address of additional PWM pins"
+        default 128
+        help
+          Use additional PWM space in addition to the PWM's the SOC
+          provides. This allows expanding the PWM space for use with
+          PWM expanders.
+
 config S3C_GPIO_SPACE
 	int "Space between gpio banks"
 	default 0
