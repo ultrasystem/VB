@@ -325,17 +325,22 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 
 	notify_cpu_starting(cpu);
 
+	/*
+	 * OK, now it's safe to let the boot CPU continue.  Wait for
+	 * the CPU migration code to notice that the CPU is online
+	 * before we continue. We need to do that before we enable
+	 * interrupts otherwise a wakeup of a kernel thread affine to
+	 * this CPU might break the affinity and let hell break lose.
+	 */
+	set_cpu_online(cpu, true);
+	while (!cpu_active(cpu))
+		cpu_relax();
+
 	if (skip_secondary_calibrate())
 		calibrate_delay();
 
 	smp_store_cpu_info(cpu);
 
-	/*
-	 * OK, now it's safe to let the boot CPU continue.  Wait for
-	 * the CPU migration code to notice that the CPU is online
-	 * before we continue - which happens after __cpu_up returns.
-	 */
-	set_cpu_online(cpu, true);
 	complete(&cpu_running);
 
 	/*

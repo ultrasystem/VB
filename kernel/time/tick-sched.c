@@ -304,13 +304,7 @@ void tick_nohz_stop_sched_tick(int inidle)
 		goto end;
 
 	if (unlikely(local_softirq_pending() && cpu_online(cpu))) {
-		static int ratelimit;
-
-		if (ratelimit < 10) {
-			printk(KERN_ERR "NOHZ: local_softirq_pending %02x\n",
-			       (unsigned int) local_softirq_pending());
-			ratelimit++;
-		}
+		softirq_check_pending_idle();
 		goto end;
 	}
 
@@ -777,6 +771,7 @@ void tick_setup_sched_timer(void)
 	 * Emulate tick processing via per-CPU hrtimers:
 	 */
 	hrtimer_init(&ts->sched_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	ts->sched_timer.irqsafe = 1;
 	ts->sched_timer.function = tick_sched_timer;
 
 	/* Get the next period (per cpu) */
