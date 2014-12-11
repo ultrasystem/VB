@@ -23,7 +23,7 @@ fi
 export ARCH=arm
 
 cd $KERNELDIR/
-make HOSTCFLAGS="-I /usr/include" -j4 || exit 1
+make HOSTCFLAGS="-I /usr/include" -j8 || exit 1
 
 #remove previous ramfs files
 rm -rf $RAMFS_TMP
@@ -54,7 +54,7 @@ echo "Make ramdisk from $RAMFS_TMP to $RAMFS_TMP.cpio"
 /arm/android/tools/image/minigzip < $RAMFS_TMP.cpio > $RAMFS_TMP.cpio.gz
 cd -
 
-make HOSTCFLAGS="-I /usr/include" -j4 zImage || exit 1
+make -b HOSTCFLAGS="-I /usr/include" -j4 zImage || exit 1
 
 rm -f $KERNELDIR/boot.img
 /arm/android/tools/image/mkbootimg --kernel $KERNELDIR/arch/arm/boot/zImage --ramdisk $RAMFS_TMP.cpio.gz --pagesize 2048 --cmdline console=ttySAC2,115200 --base 0x40000000 -o $KERNELDIR/boot.img

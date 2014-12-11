@@ -12,9 +12,10 @@
  */
 
 #include <asm/cacheflush.h>
-
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
+#include <linux/sysfs.h>
 
 #ifdef CONFIG_BUSFREQ_OPP
 #include <plat/cpu.h>

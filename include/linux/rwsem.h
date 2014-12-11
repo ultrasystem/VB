@@ -22,7 +22,8 @@ struct rw_semaphore;
 
 #ifdef CONFIG_RWSEM_GENERIC_SPINLOCK
 #include <linux/rwsem-spinlock.h> /* use a generic implementation */
-#else
+#else /* RWSEM_GENERIC_SPINLOCK */
+
 /* All arch specific implementations share the same struct */
 struct rw_anon_semaphore {
 	long			count;
@@ -47,6 +48,7 @@ static inline int anon_rwsem_is_locked(struct rw_anon_semaphore *sem)
 	return sem->count != 0;
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 struct rw_semaphore {
 	long			count;
 	raw_spinlock_t		wait_lock;
@@ -55,8 +57,9 @@ struct rw_semaphore {
 	struct lockdep_map	dep_map;
 #endif
 };
-
 #endif
+
+#endif /* !RWSEM_GENERIC_SPINLOCK */
 
 /* Common initializer macros and functions */
 
@@ -151,6 +154,9 @@ extern void anon_up_read_non_owner(struct rw_anon_semaphore *sem);
 # define anon_up_read_non_owner(sem)		anon_up_read(sem)
 #endif
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+#include <linux/rwsem_rt.h>
+#else /* PREEMPT_RT_FULL */
 /*
  * Non preempt-rt implementations
  */
@@ -225,5 +231,6 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 {
 	return anon_rwsem_is_locked((struct rw_anon_semaphore *)sem);
 }
+#endif /* !PREEMPT_RT_FULL */
 
 #endif /* _LINUX_RWSEM_H */

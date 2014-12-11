@@ -127,6 +127,7 @@ int s3cfb_draw_logo(struct fb_info *fb)
 	return 0;
 }
 #else
+static unsigned int bootloaderfb = 0;
 int fb_is_primary_device(struct fb_info *fb)
 {
 	struct s3cfb_window *win = fb->par;
