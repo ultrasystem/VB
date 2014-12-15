@@ -325,18 +325,18 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 
 	notify_cpu_starting(cpu);
 
+        /*
+         * OK, now it's safe to let the boot CPU continue.  Wait for
+         * the CPU migration code to notice that the CPU is online
+         * before we continue - which happens after __cpu_up returns.
+         */
+        set_cpu_online(cpu, true);
+        complete(&cpu_running);
+
 	if (skip_secondary_calibrate())
 		calibrate_delay();
 
 	smp_store_cpu_info(cpu);
-
-	/*
-	 * OK, now it's safe to let the boot CPU continue.  Wait for
-	 * the CPU migration code to notice that the CPU is online
-	 * before we continue - which happens after __cpu_up returns.
-	 */
-	set_cpu_online(cpu, true);
-	complete(&cpu_running);
 
 	/*
 	 * Setup the percpu timer for this CPU.
@@ -557,7 +557,7 @@ static void percpu_timer_stop(void)
 }
 #endif
 
-static DEFINE_SPINLOCK(stop_lock);
+static DEFINE_RAW_SPINLOCK(stop_lock);
 
 /*
  * ipi_cpu_stop - handle IPI from smp_send_stop()
@@ -566,10 +566,10 @@ static void ipi_cpu_stop(unsigned int cpu)
 {
 	if (system_state == SYSTEM_BOOTING ||
 	    system_state == SYSTEM_RUNNING) {
-		spin_lock(&stop_lock);
+		raw_spin_lock(&stop_lock);
 		printk(KERN_CRIT "CPU%u: stopping\n", cpu);
 		dump_stack();
-		spin_unlock(&stop_lock);
+		raw_spin_unlock(&stop_lock);
 	}
 
 	set_cpu_online(cpu, false);
